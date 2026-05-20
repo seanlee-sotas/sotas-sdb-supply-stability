@@ -1,0 +1,35 @@
+# Initial scope for SDB supply-stability MVP.
+# Rubber-adjacent monomers + key polymers (Sumitomo Rubber 梶山 use case).
+# Expand chapters 28/32/38 after pipeline validation.
+
+hs_codes:
+  # Chapter 29 — Organic chemicals (monomers)
+  - "290121"  # Ethylene
+  - "290122"  # Propylene
+  - "290124"  # Buta-1,3-diene + isoprene
+  - "290250"  # Styrene
+
+  # Chapter 39 — Plastics
+  - "390110"  # Polyethylene, density < 0.94
+  - "390120"  # Polyethylene, density >= 0.94
+  - "390210"  # Polypropylene
+  - "390319"  # Polystyrene, other
+
+  # Chapter 40 — Rubber
+  - "400110"  # Natural rubber latex
+  - "400122"  # TSR (technically specified natural rubber)
+  - "400211"  # Styrene-butadiene rubber, latex
+  - "400219"  # SBR, other
+  - "400220"  # Butadiene rubber (BR)
+  - "400259"  # NBR, other
+
+flows:
+  - "X"  # exports
+  - "M"  # imports
+
+periods:
+  - "2024"
+  - "2023"
+  - "2022"
+  - "2021"
+  - "2020"
