@@ -4,8 +4,31 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 import yaml
+
+ACCENT = "#0F766E"
+ACCENT_LIGHT = "#5EEAD4"
+DANGER = "#DC2626"
+MUTED = "#64748B"
+
+PLOT_TEMPLATE = "simple_white"
+
+
+def styled_fig(fig: go.Figure, height: int = 360) -> go.Figure:
+    fig.update_layout(
+        template=PLOT_TEMPLATE,
+        height=height,
+        margin=dict(l=10, r=10, t=30, b=10),
+        font=dict(family="sans-serif", size=12),
+        hoverlabel=dict(bgcolor="white", font_size=12),
+        showlegend=False,
+    )
+    fig.update_xaxes(showline=True, linecolor="#E2E8F0")
+    fig.update_yaxes(showline=True, linecolor="#E2E8F0", gridcolor="#F1F5F9")
+    return fig
 
 ROOT = Path(__file__).resolve().parent.parent
 COMTRADE_DIR = ROOT / "data" / "comtrade"
@@ -130,7 +153,15 @@ def render_axis4():
     m5.metric("Top-3 シェア", f"{df.head(3)['share_pct'].sum():.1f}%")
 
     st.subheader("国別シェア Top 20")
-    st.bar_chart(df.head(20).set_index("reporter")[["primaryValue"]], height=400)
+    top20 = df.head(20)
+    fig = px.bar(
+        top20, x="reporter", y="primaryValue",
+        hover_data={"share_pct": ":.2f", "primaryValue": ":,.0f"},
+        labels={"reporter": "国", "primaryValue": "貿易額 (USD)"},
+        color_discrete_sequence=[ACCENT],
+    )
+    fig.update_traces(hovertemplate="<b>%{x}</b><br>貿易額: $%{y:,.0f}<br>シェア: %{customdata[0]:.2f}%<extra></extra>")
+    st.plotly_chart(styled_fig(fig, height=420), use_container_width=True)
 
     with st.expander("全ランキング"):
         disp = df.assign(
@@ -155,7 +186,18 @@ def render_axis4():
         [selected_hs, selected_flow],
     ).df()
     if len(trend) > 1:
-        st.line_chart(trend.set_index("period")["hhi"], height=300)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=trend["period"], y=trend["hhi"], mode="lines+markers",
+            line=dict(color=ACCENT, width=3), marker=dict(size=8),
+            hovertemplate="<b>%{x}</b><br>HHI: %{y:,.0f}<extra></extra>",
+        ))
+        # Concentration thresholds
+        fig.add_hline(y=1500, line_dash="dash", line_color=MUTED, annotation_text="中集中ライン (1500)", annotation_position="right")
+        fig.add_hline(y=2500, line_dash="dash", line_color=DANGER, annotation_text="高集中ライン (2500)", annotation_position="right")
+        fig.update_yaxes(title="HHI", rangemode="tozero")
+        fig.update_xaxes(title="期間")
+        st.plotly_chart(styled_fig(fig, height=320), use_container_width=True)
     else:
         st.info("現データは1期のみ。`uv run python ingest/comtrade.py` で全期間ingest。")
 
@@ -194,7 +236,14 @@ def render_axis5():
             reason_df = con.execute(
                 "SELECT reason, COUNT(*) AS cnt FROM svhc GROUP BY reason ORDER BY cnt DESC LIMIT 10"
             ).df()
-            st.bar_chart(reason_df.set_index("reason")["cnt"], height=280)
+            fig = px.bar(
+                reason_df, x="cnt", y="reason", orientation="h",
+                color_discrete_sequence=[ACCENT],
+                labels={"cnt": "件数", "reason": ""},
+            )
+            fig.update_traces(hovertemplate="<b>%{y}</b><br>%{x}件<extra></extra>")
+            fig.update_yaxes(categoryorder="total ascending")
+            st.plotly_chart(styled_fig(fig, height=320), use_container_width=True)
 
             st.markdown("**年次収載トレンド（規制リスクの早期警報）**")
             yearly = con.execute(
@@ -204,7 +253,13 @@ def render_axis5():
             ).df()
             if not yearly.empty:
                 yearly["year"] = yearly["year"].astype(int)
-                st.bar_chart(yearly.set_index("year")["additions"], height=240)
+                fig = px.bar(
+                    yearly, x="year", y="additions",
+                    color_discrete_sequence=[ACCENT_LIGHT],
+                    labels={"year": "年", "additions": "新規収載数"},
+                )
+                fig.update_traces(hovertemplate="<b>%{x}</b>年: %{y}件<extra></extra>")
+                st.plotly_chart(styled_fig(fig, height=260), use_container_width=True)
 
             st.markdown("**直近10件（規制追加 = 該当素材は将来制限の可能性）**")
             recent = con.execute(
@@ -317,7 +372,16 @@ def render_axis6():
                COUNT(*) FILTER (WHERE list_has(string_split(items, ','), '2.06')) AS item_206
         FROM sec GROUP BY ticker ORDER BY filings DESC
     """).df()
-    st.bar_chart(by_co.set_index("ticker")["filings"], height=280)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=by_co["ticker"], y=by_co["filings"],
+        marker_color=ACCENT, name="全filing",
+        customdata=by_co[["item_801", "item_206"]].values,
+        hovertemplate="<b>%{x}</b><br>全filing: %{y}<br>Item 8.01: %{customdata[0]}<br>Item 2.06: %{customdata[1]}<extra></extra>",
+    ))
+    fig.update_layout(showlegend=False)
+    fig.update_yaxes(title="filing数")
+    st.plotly_chart(styled_fig(fig, height=300), use_container_width=True)
 
     st.markdown("**Item 8.01 (Other Events) の頻度 — FM・事故・大規模イベント候補**")
     item_801 = con.execute("""
@@ -459,13 +523,38 @@ def render_axis7():
     c4.metric("レンジ", f"{min_p:.2f} – {max_p:.2f}")
 
     st.subheader(f"{co_map.get(selected, selected)} — 月次価格推移")
-    st.line_chart(df.set_index("date")["price"], height=320)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["date"], y=df["price"], mode="lines", name="価格",
+        line=dict(color=ACCENT, width=2),
+        hovertemplate=f"<b>%{{x|%Y-%m}}</b><br>%{{y:,.2f}} {unit}<extra></extra>",
+    ))
+    fig.update_yaxes(title=unit)
+    st.plotly_chart(styled_fig(fig, height=340), use_container_width=True)
 
-    st.subheader("YoY 変化率（前年同月比）")
-    st.line_chart(df.set_index("date")["yoy_pct"], height=240)
-
-    st.subheader("年率ボラティリティ（12ヶ月rolling）")
-    st.line_chart(df.set_index("date")["rolling_vol_12m"], height=240)
+    col_yoy, col_vol = st.columns(2)
+    with col_yoy:
+        st.markdown("**YoY 変化率（前年同月比）**")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["yoy_pct"], mode="lines",
+            line=dict(color=ACCENT, width=2), fill="tozeroy",
+            fillcolor="rgba(15,118,110,0.15)",
+            hovertemplate="<b>%{x|%Y-%m}</b><br>%{y:+.1f}%<extra></extra>",
+        ))
+        fig.add_hline(y=0, line_color=MUTED, line_width=1)
+        fig.update_yaxes(title="%", ticksuffix="%")
+        st.plotly_chart(styled_fig(fig, height=260), use_container_width=True)
+    with col_vol:
+        st.markdown("**年率ボラティリティ（12ヶ月rolling）**")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["rolling_vol_12m"], mode="lines",
+            line=dict(color="#7C3AED", width=2),
+            hovertemplate="<b>%{x|%Y-%m}</b><br>vol: %{y:.1f}%<extra></extra>",
+        ))
+        fig.update_yaxes(title="%", ticksuffix="%", rangemode="tozero")
+        st.plotly_chart(styled_fig(fig, height=260), use_container_width=True)
 
     st.divider()
     st.subheader("全商品の直近YoY変化率")
@@ -641,7 +730,14 @@ def render_cross():
             cc2.metric("YoY", f"{latest['yoy_pct']:+.1f}%" if pd.notna(latest["yoy_pct"]) else "—")
             vol = df["price"].pct_change().std() * (12 ** 0.5) * 100
             cc3.metric("年率ボラティリティ", f"{vol:.1f}%")
-            st.line_chart(df.set_index("date")["price"], height=240)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df["date"], y=df["price"], mode="lines",
+                line=dict(color=ACCENT, width=2),
+                hovertemplate=f"<b>%{{x|%Y-%m}}</b><br>%{{y:,.2f}} {unit}<extra></extra>",
+            ))
+            fig.update_yaxes(title=unit)
+            st.plotly_chart(styled_fig(fig, height=260), use_container_width=True)
     else:
         st.info(f"World Bank Pink Sheet で直接の価格指標なし。{m['name_ja']}は原料連動価格になる可能性（原油: CRUDE_BRENT 等を参照）。")
 
