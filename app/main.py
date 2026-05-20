@@ -12,6 +12,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import chemicals_loader as cl  # noqa: E402
+import scoring  # noqa: E402
 
 ACCENT = "#0F766E"
 ACCENT_LIGHT = "#5EEAD4"
@@ -1133,9 +1134,216 @@ def render_cross():
         st.info("検索キーワード生成不可（物質名なし）")
 
 
+# ---------- score tab (composite + radar + narrative) ----------
+def render_score():
+    chem_df = load_all_chemicals_df()
+    if chem_df.empty:
+        st.error("`data/chemicals/chemicals.parquet` なし。")
+        return
+
+    pinned_count = int(chem_df["is_pinned"].sum())
+    st.info(
+        "**🏆 総合スコア** | 7軸プロキシ指標を 0–100 で正規化し、業界別重みで合成 → A–F 判定。"
+        f"7軸のうち {scoring.MIN_SCORED_AXES} 軸以上のデータが揃わない場合は「評価データ不足」として明示。"
+        "総評は現時点ではルールベース生成（API予算復活時に LLM 化）。"
+    )
+
+    # --- Selectors ---
+    col_search, col_cat, col_ind = st.columns([2, 1, 1])
+    with col_search:
+        query = st.text_input(
+            "🔍 物質名 / CAS番号で検索（部分一致）",
+            "",
+            placeholder="例: ethylene / 74-85-1 / SBR",
+            key="score_search",
+        )
+    with col_cat:
+        categories_meta = cl.categories()
+        cat_options = ["（全カテゴリ）"] + [c["id"] for c in categories_meta]
+        cat_labels = {c["id"]: c["name_ja"] for c in categories_meta}
+        selected_cat = st.selectbox(
+            "カテゴリ絞り込み",
+            cat_options,
+            format_func=lambda c: c if c == "（全カテゴリ）" else f"{cat_labels.get(c, c)}",
+            key="score_cat",
+        )
+    with col_ind:
+        industries = cl.industries()
+        ind_options = list(industries.keys())
+        ind_labels = {k: v.get("name_ja", k) for k, v in industries.items()}
+        # Put "default" first if exists
+        if "rubber_tire" in ind_options:
+            ind_options.remove("rubber_tire"); ind_options.insert(0, "rubber_tire")
+        selected_industry = st.selectbox(
+            "業界（重み）",
+            ind_options,
+            format_func=lambda i: f"{ind_labels.get(i, i)}",
+            key="score_industry",
+        )
+
+    filtered = chem_df.copy()
+    if selected_cat != "（全カテゴリ）":
+        filtered = filtered[filtered["category_norm"] == selected_cat]
+    if query.strip():
+        q = query.strip().lower()
+        mask = (
+            filtered["cas"].str.lower().str.contains(q, na=False)
+            | filtered["name_en"].str.lower().str.contains(q, na=False)
+            | filtered["iupac_name"].fillna("").str.lower().str.contains(q, na=False)
+            | filtered["top_synonym"].fillna("").str.lower().str.contains(q, na=False)
+        )
+        filtered = filtered[mask]
+    if filtered.empty:
+        st.warning(f"該当物質なし。検索を緩めるか、{pinned_count}件のピン留め物質に戻してください。")
+        return
+
+    def fmt_row(cas: str) -> str:
+        r = filtered[filtered["cas"] == cas].iloc[0]
+        pin = "⭐ " if r["is_pinned"] else ""
+        nm = r["_display_name"] or cas
+        return f"{pin}{nm}　[{cas}]　— {r['category_label_ja']}"
+
+    cas_options = filtered["cas"].tolist()
+    selected_cas = st.selectbox(
+        "物質を選択",
+        cas_options,
+        format_func=fmt_row,
+        key="score_cas",
+    )
+
+    chem = cl.get_chemical(selected_cas)
+    if not chem:
+        st.error("物質詳細の取得に失敗")
+        return
+
+    # --- Compute scores ---
+    with st.spinner("7軸スコア計算中..."):
+        sub = scoring.compute_all(selected_cas)
+        comp = scoring.composite(sub, industry=selected_industry)
+
+    # --- Headline metrics ---
+    st.markdown(f"## {chem['display_name']}  <small>　[CAS {chem['cas']}]</small>", unsafe_allow_html=True)
+    if chem.get("pinned_note"):
+        st.caption(f"📌 {chem['pinned_note']}")
+
+    hm1, hm2, hm3, hm4 = st.columns([1.2, 1, 1, 1])
+    if comp["composite"] is not None:
+        # Grade color
+        grade = comp["grade"]
+        grade_colors = {"A": "#10B981", "B": "#22C55E", "C": "#F59E0B", "D": "#FB923C", "E": "#EF4444", "F": "#7F1D1D"}
+        gc = grade_colors.get(grade, MUTED)
+        hm1.markdown(
+            f"<div style='padding:10px;border-radius:10px;background:{gc}15;border:2px solid {gc};text-align:center;'>"
+            f"<div style='font-size:11px;color:#475569;'>総合スコア</div>"
+            f"<div style='font-size:42px;font-weight:700;color:{gc};line-height:1.0;margin-top:3px;'>{comp['composite']:.0f}</div>"
+            f"<div style='font-size:32px;font-weight:700;color:{gc};line-height:1.0;'>{grade}</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        hm1.markdown(
+            f"<div style='padding:10px;border-radius:10px;background:#F1F5F9;border:2px dashed {MUTED};text-align:center;'>"
+            f"<div style='font-size:11px;color:#475569;'>総合スコア</div>"
+            f"<div style='font-size:24px;font-weight:600;color:{MUTED};margin-top:6px;'>評価データ不足</div>"
+            f"<div style='font-size:11px;color:#475569;margin-top:3px;'>{comp['scored_axes']}/7軸のみ</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    hm2.metric("評価軸数", f"{comp['scored_axes']} / 7")
+    hm3.metric("データ信頼度", {"high": "高", "medium": "中", "low": "低"}.get(comp.get("confidence"), "—"))
+    ind_label = cl.industries().get(comp["industry"], {}).get("name_ja", comp["industry"])
+    hm4.metric("適用重み", ind_label)
+
+    st.divider()
+
+    # --- Radar chart + sub-score table ---
+    col_radar, col_table = st.columns([1.2, 1])
+    with col_radar:
+        st.markdown("**7軸レーダー** (外周=安定/100, 中心=リスク/0)")
+        axes_order = scoring.AXIS_KEYS
+        axis_labels = [scoring.AXIS_LABELS_JA[k] for k in axes_order]
+        scores = [sub[k]["score"] if sub[k]["score"] is not None else 0 for k in axes_order]
+        has_data = [sub[k]["score"] is not None for k in axes_order]
+        # Close the polygon
+        theta = axis_labels + [axis_labels[0]]
+        r_actual = scores + [scores[0]]
+        r_ref_caution = [60] * (len(axes_order) + 1)
+        r_ref_danger = [30] * (len(axes_order) + 1)
+
+        fig = go.Figure()
+        # Background reference rings
+        fig.add_trace(go.Scatterpolar(
+            r=r_ref_danger, theta=theta, mode="lines", line=dict(color="#FCA5A5", width=1, dash="dot"),
+            name="高リスクライン (30)", hoverinfo="skip",
+        ))
+        fig.add_trace(go.Scatterpolar(
+            r=r_ref_caution, theta=theta, mode="lines", line=dict(color="#FDE68A", width=1, dash="dot"),
+            name="注意ライン (60)", hoverinfo="skip",
+        ))
+        # Actual scores
+        fig.add_trace(go.Scatterpolar(
+            r=r_actual, theta=theta, mode="lines+markers", fill="toself",
+            line=dict(color=ACCENT, width=2),
+            fillcolor="rgba(15,118,110,0.25)",
+            marker=dict(size=8, color=[ACCENT if h else "#CBD5E1" for h in has_data] + [ACCENT if has_data[0] else "#CBD5E1"]),
+            name="軸スコア",
+            hovertemplate="<b>%{theta}</b><br>%{r:.0f}/100<extra></extra>",
+        ))
+        fig.update_layout(
+            template="plotly_white",
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0, 100], tickvals=[0, 30, 60, 100],
+                                gridcolor="#E2E8F0", tickfont=dict(size=10, color=MUTED)),
+                angularaxis=dict(tickfont=dict(size=11, color="#334155"), gridcolor="#E2E8F0"),
+                bgcolor="white",
+            ),
+            showlegend=False,
+            height=420,
+            margin=dict(l=60, r=60, t=20, b=20),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("⚫ 灰色マーカー = 評価データ不足の軸（0点扱いではない）")
+
+    with col_table:
+        st.markdown("**軸別サブスコア**")
+        tbl_rows = []
+        for k in scoring.AXIS_KEYS:
+            info = sub[k]
+            s = info["score"]
+            tbl_rows.append({
+                "軸": scoring.AXIS_LABELS_JA[k].replace("軸", "").strip()[:18],
+                "スコア": f"{s:.0f}" if s is not None else "—",
+                "重み": f"{comp['weights'].get(k, 0)*100:.0f}%",
+                "値": str(info["value"])[:30],
+            })
+        tdf = pd.DataFrame(tbl_rows)
+        st.dataframe(tdf, use_container_width=True, hide_index=True, height=330)
+
+        # Notes
+        with st.expander("軸別 詳細メモ"):
+            for k in scoring.AXIS_KEYS:
+                info = sub[k]
+                s = f"{info['score']:.0f}" if info["score"] is not None else "—"
+                st.markdown(
+                    f"**{scoring.AXIS_LABELS_JA[k]}**: {s} 点  \n　{info['note']}",
+                    unsafe_allow_html=True,
+                )
+
+    st.divider()
+
+    # --- Narrative review ---
+    st.markdown("### 📝 総評")
+    review = scoring.narrative(chem, sub, comp)
+    st.markdown(review)
+    st.caption(
+        "🤖 ルールベース生成（軸スコアの最小/最大/カバレッジから自動構成）。"
+        "API予算回復時に Claude Sonnet 4.6 を介した文脈考慮型ナラティブに切替予定。"
+    )
+
+
 # ---------- Top-level tabs ----------
-tab_overview, tab_cross, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
-    ["🏠 Overview", "🔗 素材横串", "🏭 軸1 生産能力", "⚖️ 軸2 需給バランス", "🤝 軸3 サプライヤー集中", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "💹 軸7 価格変動性"]
+tab_overview, tab_score, tab_cross, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+    ["🏠 Overview", "🏆 総合スコア", "🔗 素材横串", "🏭 軸1 生産能力", "⚖️ 軸2 需給バランス", "🤝 軸3 サプライヤー集中", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "💹 軸7 価格変動性"]
 )
 
 with tab_overview:
@@ -1179,6 +1387,9 @@ with tab_overview:
         })
     st.dataframe(pd.DataFrame(progress), use_container_width=True, hide_index=True)
     st.caption("各軸の詳細は上のタブから。")
+
+with tab_score:
+    render_score()
 
 with tab_cross:
     render_cross()
