@@ -20,6 +20,7 @@ CONFIG_PATH = ROOT / "ingest" / "hs_codes.yml"
 DATA_DIR = ROOT / "data" / "comtrade"
 BASE_URL = "https://comtradeapi.un.org/data/v1/get/C/A/HS"
 REF_REPORTERS_URL = "https://comtradeapi.un.org/files/v1/app/reference/Reporters.json"
+REF_H6_URL = "https://comtradeapi.un.org/files/v1/app/reference/H6.json"
 
 REQUEST_SLEEP_SEC = 1.0
 REQUEST_TIMEOUT_SEC = 120
@@ -62,6 +63,12 @@ def fetch_trade(key: str, cmd_code: str, flow_code: str, period: str) -> list[di
 
 def fetch_reporters() -> list[dict]:
     r = requests.get(REF_REPORTERS_URL, timeout=60)
+    r.raise_for_status()
+    return r.json()["results"]
+
+
+def fetch_hs_codes() -> list[dict]:
+    r = requests.get(REF_H6_URL, timeout=60)
     r.raise_for_status()
     return r.json()["results"]
 
@@ -125,6 +132,12 @@ def main():
     ref_path = DATA_DIR / "ref_reporters.json"
     ref_path.write_text(json.dumps(reporters, ensure_ascii=False, indent=2))
     print(f"Wrote {len(reporters)} reporters to {ref_path}")
+
+    print("Fetching H6 HS code reference...")
+    hs_ref = fetch_hs_codes()
+    hs_path = DATA_DIR / "ref_hs.json"
+    hs_path.write_text(json.dumps(hs_ref, ensure_ascii=False, indent=2))
+    print(f"Wrote {len(hs_ref)} HS entries to {hs_path}")
 
     if failures:
         print(f"\n{len(failures)} failures:")
