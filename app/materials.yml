@@ -1,0 +1,178 @@
+# SDB target materials (rubber/tire-adjacent focus).
+# Each entry links to identifiers used by each axis:
+#   hs_codes: HS6 codes → 軸4 (Comtrade) + 軸1 で「企業×HS製品」 マッピング候補
+#   cas: CAS number → 軸5 (規制) との突合
+#   wb_commodity: World Bank Pink Sheet ticker → 軸7 (価格)
+#   sec_tickers: SEC EDGAR 8-K で「この素材を作っている」可能性が高い企業 → 軸6
+#   capacity_keywords: 軸1 (EDINET snippets) の検索キーワード（製品名のバリエーション）
+
+materials:
+  - id: ethylene
+    name_ja: エチレン
+    name_en: Ethylene
+    cas: "74-85-1"
+    hs_codes: ["290121"]
+    wb_commodity: null  # WB Pink Sheet にエチレン直接なし、原油で代替
+    sec_tickers: ["DOW", "LYB", "EMN", "WLK", "CE"]
+    capacity_keywords: ["エチレン", "ethylene"]
+    category: モノマー
+
+  - id: propylene
+    name_ja: プロピレン
+    name_en: Propylene
+    cas: "115-07-1"
+    hs_codes: ["290122"]
+    wb_commodity: null
+    sec_tickers: ["DOW", "LYB", "EMN"]
+    capacity_keywords: ["プロピレン", "propylene"]
+    category: モノマー
+
+  - id: butadiene
+    name_ja: ブタジエン
+    name_en: 1,3-Butadiene
+    cas: "106-99-0"
+    hs_codes: ["290124"]
+    wb_commodity: null
+    sec_tickers: ["LYB", "DOW", "EMN"]
+    capacity_keywords: ["ブタジエン", "butadiene"]
+    category: モノマー
+
+  - id: styrene
+    name_ja: スチレン
+    name_en: Styrene
+    cas: "100-42-5"
+    hs_codes: ["290250"]
+    wb_commodity: null
+    sec_tickers: ["LYB", "DOW", "CE"]
+    capacity_keywords: ["スチレン", "styrene"]
+    category: モノマー
+
+  - id: natural_rubber_tsr
+    name_ja: 天然ゴム (TSR)
+    name_en: Natural Rubber (TSR20)
+    cas: "9006-04-6"
+    hs_codes: ["400122", "400110"]
+    wb_commodity: "RUBBER_TSR20"
+    sec_tickers: []
+    capacity_keywords: ["天然ゴム", "TSR", "natural rubber"]
+    category: 天然ポリマー
+
+  - id: natural_rubber_rss
+    name_ja: 天然ゴム (RSS3)
+    name_en: Natural Rubber (RSS3)
+    cas: "9006-04-6"
+    hs_codes: ["400122"]
+    wb_commodity: "RUBBER1_MYSG"
+    sec_tickers: []
+    capacity_keywords: ["天然ゴム", "RSS"]
+    category: 天然ポリマー
+
+  - id: sbr
+    name_ja: スチレン・ブタジエンゴム (SBR)
+    name_en: Styrene-Butadiene Rubber
+    cas: "9003-55-8"
+    hs_codes: ["400211", "400219"]
+    wb_commodity: null
+    sec_tickers: ["LYB", "WLK"]
+    capacity_keywords: ["SBR", "スチレンブタジエン", "スチレン・ブタジエン"]
+    category: 合成ゴム
+
+  - id: br
+    name_ja: ブタジエンゴム (BR)
+    name_en: Butadiene Rubber
+    cas: "9003-17-2"
+    hs_codes: ["400220"]
+    wb_commodity: null
+    sec_tickers: ["LYB"]
+    capacity_keywords: ["BR", "ブタジエンゴム", "ポリブタジエン"]
+    category: 合成ゴム
+
+  - id: nbr
+    name_ja: ニトリルゴム (NBR)
+    name_en: Nitrile Butadiene Rubber
+    cas: "9003-18-3"
+    hs_codes: ["400259"]
+    wb_commodity: null
+    sec_tickers: []
+    capacity_keywords: ["NBR", "ニトリルゴム", "ニトリル・ブタジエン"]
+    category: 合成ゴム
+
+  - id: carbon_black
+    name_ja: カーボンブラック
+    name_en: Carbon Black
+    cas: "1333-86-4"
+    hs_codes: ["280300"]
+    wb_commodity: null
+    sec_tickers: ["CC", "ASH"]
+    capacity_keywords: ["カーボンブラック", "carbon black"]
+    category: 充填剤
+
+  - id: silica
+    name_ja: シリカ (沈降性二酸化ケイ素)
+    name_en: Precipitated Silica
+    cas: "7631-86-9"
+    hs_codes: ["281122"]
+    wb_commodity: null
+    sec_tickers: ["PPG", "SHW"]
+    capacity_keywords: ["シリカ", "二酸化ケイ素", "silica", "silicon dioxide"]
+    category: 充填剤
+
+  - id: pvc
+    name_ja: ポリ塩化ビニル (PVC)
+    name_en: Polyvinyl Chloride
+    cas: "9002-86-2"
+    hs_codes: ["390410"]
+    wb_commodity: null
+    sec_tickers: ["WLK", "OLN", "SHW"]
+    capacity_keywords: ["PVC", "塩化ビニル", "塩ビ"]
+    category: プラスチック
+
+  - id: hdpe
+    name_ja: 高密度ポリエチレン (HDPE)
+    name_en: HDPE
+    cas: "9002-88-4"
+    hs_codes: ["390120"]
+    wb_commodity: null
+    sec_tickers: ["DOW", "LYB", "EMN", "WLK"]
+    capacity_keywords: ["HDPE", "高密度ポリエチレン"]
+    category: プラスチック
+
+  - id: pp
+    name_ja: ポリプロピレン (PP)
+    name_en: Polypropylene
+    cas: "9003-07-0"
+    hs_codes: ["390210"]
+    wb_commodity: null
+    sec_tickers: ["DOW", "LYB", "EMN"]
+    capacity_keywords: ["ポリプロピレン", "polypropylene"]
+    category: プラスチック
+
+  - id: silicone
+    name_ja: シリコーン
+    name_en: Silicones
+    cas: "63148-62-9"
+    hs_codes: ["391000"]
+    wb_commodity: null
+    sec_tickers: ["DOW", "DD"]
+    capacity_keywords: ["シリコーン", "silicone"]
+    category: プラスチック
+
+  - id: rubber_accelerator
+    name_ja: ゴム加硫促進剤
+    name_en: Rubber accelerators
+    cas: null  # multiple compounds: CBS, MBT, TBBS, etc.
+    hs_codes: ["381210"]
+    wb_commodity: null
+    sec_tickers: ["EMN", "ASH"]
+    capacity_keywords: ["加硫促進剤", "vulcanization accelerator", "MBT", "CBS"]
+    category: ゴム添加剤
+
+  - id: rubber_antioxidant
+    name_ja: ゴム老化防止剤 (TMQ系)
+    name_en: Rubber antioxidants (TMQ-based)
+    cas: "26780-96-1"  # TMQ
+    hs_codes: ["381231", "381239"]
+    wb_commodity: null
+    sec_tickers: ["EMN"]
+    capacity_keywords: ["老化防止剤", "TMQ", "antioxidant"]
+    category: ゴム添加剤

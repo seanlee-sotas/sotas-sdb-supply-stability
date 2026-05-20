@@ -5,6 +5,7 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 import streamlit as st
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 COMTRADE_DIR = ROOT / "data" / "comtrade"
@@ -486,9 +487,197 @@ def render_axis7():
     st.dataframe(latest, use_container_width=True, hide_index=True)
 
 
+# ---------- cross-axis tab ----------
+@st.cache_data
+def load_materials() -> list[dict]:
+    p = Path(__file__).resolve().parent / "materials.yml"
+    if not p.exists():
+        return []
+    return yaml.safe_load(p.read_text())["materials"]
+
+
+def render_cross():
+    materials = load_materials()
+    if not materials:
+        st.error("`app/materials.yml` なし。")
+        return
+
+    st.info(
+        "**🔗 素材横串ビュー** | 個別素材を選ぶと、5軸全部のデータが一画面に集約される。"
+        "「ブタジエンゴム」を選んだ瞬間に → 軸4の集中度・軸5の規制ヒット・軸6の関連企業8-K・軸7の価格・軸1の生産能力言及が一覧。"
+        "供給安定性の総合スコア候補（将来）。"
+    )
+
+    options = [m["id"] for m in materials]
+    by_id = {m["id"]: m for m in materials}
+    selected_id = st.selectbox(
+        "素材を選択",
+        options,
+        format_func=lambda i: f"{by_id[i]['name_ja']} ({by_id[i]['name_en']}) — {by_id[i]['category']}",
+        key="cross_mat",
+    )
+    m = by_id[selected_id]
+
+    # Material metadata
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("カテゴリ", m["category"])
+    c2.metric("CAS番号", m["cas"] or "—")
+    c3.metric("HSコード", ", ".join(m["hs_codes"]) if m["hs_codes"] else "—")
+    c4.metric("WB商品コード", m["wb_commodity"] or "—")
+
+    st.divider()
+
+    # === Axis 4: HHI snapshot per HS code ===
+    st.subheader("🌐 軸4 地政学・原産地 — 直近の輸出集中度")
+    trade_p = latest_parquet(COMTRADE_DIR, "trade")
+    reporters = load_reporters()
+    if trade_p and m["hs_codes"]:
+        con = duckdb.connect(":memory:")
+        con.execute(f"CREATE VIEW trade AS SELECT * FROM '{trade_p}'")
+        cols = st.columns(min(len(m["hs_codes"]), 3))
+        for i, hs in enumerate(m["hs_codes"]):
+            with cols[i % len(cols)]:
+                df = con.execute(
+                    """SELECT reporterCode, primaryValue FROM trade
+                       WHERE cmdCode=? AND flowCode='X' AND partner2Code=0 AND primaryValue>0
+                         AND period = (SELECT MAX(period) FROM trade WHERE cmdCode=?)
+                       ORDER BY primaryValue DESC""",
+                    [hs, hs],
+                ).df()
+                if df.empty:
+                    st.warning(f"HS {hs}: データなし")
+                    continue
+                total = df["primaryValue"].sum()
+                df["share"] = df["primaryValue"] / total * 100
+                hhi = (df["share"] ** 2).sum()
+                top1 = df.iloc[0]
+                top1_name = reporters.get(top1["reporterCode"], f"M49 {top1['reporterCode']}")
+                st.markdown(f"**HS {hs}** ({total/1e9:.2f}B USD輸出, {len(df)}国)")
+                st.metric("HHI", f"{hhi:,.0f}", help="<1500 低 / >2500 高集中")
+                st.metric("Top-1", f"{top1['share']:.1f}%", help=f"{top1_name}")
+    else:
+        st.info("該当HSコードなし or 軸4データ未取得。")
+
+    st.divider()
+
+    # === Axis 5: regulation hits by CAS ===
+    st.subheader("📋 軸5 規制リスク — CAS番号での該当ヒット")
+    svhc_p = latest_parquet(ECHA_DIR, "svhc")
+    pops_p = latest_parquet(REG_DIR, "pops")
+    if m["cas"]:
+        hits_total = 0
+        if svhc_p:
+            con = duckdb.connect()
+            con.execute(f"CREATE VIEW svhc AS SELECT * FROM '{svhc_p}'")
+            hit = con.execute("SELECT substance_name, date_of_inclusion, reason FROM svhc WHERE cas_number = ?", [m["cas"]]).df()
+            if not hit.empty:
+                hits_total += len(hit)
+                st.error(f"🚨 ECHA SVHC: {len(hit)}件ヒット")
+                hit["date_of_inclusion"] = hit["date_of_inclusion"].astype(str).str[:10]
+                st.dataframe(hit, use_container_width=True, hide_index=True)
+        if pops_p:
+            pops = pd.read_parquet(pops_p)
+            phit = pops[pops["cas"] == m["cas"]]
+            if not phit.empty:
+                hits_total += len(phit)
+                st.error(f"🚨 Stockholm POPs: {len(phit)}件ヒット (Annex {phit.iloc[0]['annex']})")
+                st.dataframe(phit[["name_en", "annex", "type"]], use_container_width=True, hide_index=True)
+        if hits_total == 0:
+            st.success(f"✅ CAS {m['cas']} は現時点で規制リスト該当なし")
+    else:
+        st.info("CAS番号未登録（複数化合物等）。素材リファレンスでの個別CASマッピングが必要。")
+
+    st.divider()
+
+    # === Axis 6: related company 8-K ===
+    st.subheader("💥 軸6 関連企業の供給途絶イベント (8-K)")
+    sec_p = latest_parquet(SEC_DIR, "filings_8k")
+    if sec_p and m["sec_tickers"]:
+        con = duckdb.connect()
+        con.execute(f"CREATE VIEW sec AS SELECT * FROM '{sec_p}'")
+        placeholders = ",".join(["?"] * len(m["sec_tickers"]))
+        df = con.execute(
+            f"""SELECT filing_date, ticker, company_name, items, primary_desc, accession_url
+               FROM sec
+               WHERE ticker IN ({placeholders})
+                 AND (list_has(string_split(items, ','), '8.01')
+                      OR list_has(string_split(items, ','), '2.06')
+                      OR list_has(string_split(items, ','), '1.02'))
+               ORDER BY filing_date DESC LIMIT 20""",
+            m["sec_tickers"],
+        ).df()
+        st.caption(f"関連企業: {', '.join(m['sec_tickers'])}")
+        if df.empty:
+            st.info("該当期間内に供給途絶系の臨時開示なし。")
+        else:
+            df["link"] = df["accession_url"].map(lambda u: f"[開示]({u})")
+            disp = df[["filing_date", "ticker", "items", "primary_desc", "link"]]
+            disp.columns = ["日付", "Ticker", "Items", "種別", "リンク"]
+            st.dataframe(disp, use_container_width=True, hide_index=True)
+    else:
+        st.info("関連企業（米化学）の紐付けなし。本素材はアジア/欧州企業中心の可能性。")
+
+    st.divider()
+
+    # === Axis 7: price chart ===
+    st.subheader("💹 軸7 価格変動性")
+    wb_p = latest_parquet(WB_DIR, "prices_monthly")
+    if wb_p and m["wb_commodity"]:
+        con = duckdb.connect()
+        con.execute(f"CREATE VIEW prices AS SELECT * FROM '{wb_p}'")
+        cutoff = pd.Timestamp.now() - pd.DateOffset(years=10)
+        df = con.execute(
+            "SELECT date, price, unit, name FROM prices WHERE commodity = ? AND date >= ? ORDER BY date",
+            [m["wb_commodity"], cutoff],
+        ).df()
+        if df.empty:
+            st.info("価格データなし")
+        else:
+            df["yoy_pct"] = df["price"].pct_change(12) * 100
+            unit = df["unit"].iloc[0]
+            latest = df.iloc[-1]
+            cc1, cc2, cc3 = st.columns(3)
+            cc1.metric("最新価格", f"{latest['price']:.2f} {unit}", help=f"{str(latest['date'])[:10]}")
+            cc2.metric("YoY", f"{latest['yoy_pct']:+.1f}%" if pd.notna(latest["yoy_pct"]) else "—")
+            vol = df["price"].pct_change().std() * (12 ** 0.5) * 100
+            cc3.metric("年率ボラティリティ", f"{vol:.1f}%")
+            st.line_chart(df.set_index("date")["price"], height=240)
+    else:
+        st.info(f"World Bank Pink Sheet で直接の価格指標なし。{m['name_ja']}は原料連動価格になる可能性（原油: CRUDE_BRENT 等を参照）。")
+
+    st.divider()
+
+    # === Axis 1: capacity snippets ===
+    st.subheader("🏭 軸1 生産能力・新増設 — 関連snippet")
+    edinet_p = latest_parquet(EDINET_DIR, "capacity_snippets")
+    if edinet_p and m["capacity_keywords"]:
+        con = duckdb.connect()
+        con.execute(f"CREATE VIEW snip AS SELECT * FROM '{edinet_p}'")
+        like_clauses = " OR ".join(["snippet LIKE ?"] * len(m["capacity_keywords"]))
+        params = [f"%{k}%" for k in m["capacity_keywords"]]
+        df = con.execute(
+            f"""SELECT company, period, doctype, snippet
+                FROM snip WHERE {like_clauses}
+                ORDER BY period DESC LIMIT 15""",
+            params,
+        ).df()
+        st.caption(f"検索キーワード: {', '.join(m['capacity_keywords'])}")
+        if df.empty:
+            st.info("該当snippetなし")
+        else:
+            for _, r in df.iterrows():
+                with st.expander(f"[{r['company']}] {r['period']} — {r['doctype']}"):
+                    snippet = r["snippet"]
+                    for kw in m["capacity_keywords"]:
+                        snippet = snippet.replace(kw, f"**{kw}**")
+                    st.markdown(f"> {snippet}")
+    else:
+        st.info("検索キーワード未設定")
+
+
 # ---------- Top-level tabs ----------
-tab_overview, tab1, tab4, tab5, tab6, tab7, tab_other = st.tabs(
-    ["🏠 Overview", "🏭 軸1 生産能力", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "💹 軸7 価格変動性", "🚧 他軸 (実装待ち)"]
+tab_overview, tab_cross, tab1, tab4, tab5, tab6, tab7, tab_other = st.tabs(
+    ["🏠 Overview", "🔗 素材横串", "🏭 軸1 生産能力", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "💹 軸7 価格変動性", "🚧 他軸 (実装待ち)"]
 )
 
 with tab_overview:
@@ -511,6 +700,9 @@ with tab_overview:
         progress.append({"軸": code, "要素": name, "状態": "✅ 実装済" if active else "🚧 未着手", "データソース": source})
     st.dataframe(pd.DataFrame(progress), use_container_width=True, hide_index=True)
     st.caption("各軸の詳細は上のタブから。新しい軸が ingest 完了次第、順次タブを追加していく。")
+
+with tab_cross:
+    render_cross()
 
 with tab1:
     render_axis1()
