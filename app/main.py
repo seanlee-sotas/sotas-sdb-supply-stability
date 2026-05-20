@@ -3,50 +3,54 @@ import json
 from pathlib import Path
 
 import duckdb
+import pandas as pd
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parent.parent
 COMTRADE_DIR = ROOT / "data" / "comtrade"
 ECHA_DIR = ROOT / "data" / "echa"
+REG_DIR = ROOT / "data" / "regulations"
+SEC_DIR = ROOT / "data" / "sec"
 
 AXES = [
     ("軸1", "生産能力・新増設", "EDINET XBRLから有報「生産能力」表抽出", False),
     ("軸2", "需給バランス", "石化協月次稼働率 / METI生産動態統計", False),
     ("軸3", "サプライヤー集中度", "EDINET主要販売先 + 業界団体加盟社能力", False),
-    ("軸4", "地政学・原産地", "UN Comtrade年次貿易統計（実装済）", True),
-    ("軸5", "政策・規制リスク", "ECHA SVHC + 化審法 + 経産省特定重要物資（部分実装）", True),
-    ("軸6", "過去の供給途絶", "化工日報RSSのLLMイベント抽出", False),
-    ("軸7", "価格変動性", "化工日報市況欄RSSの数値抽出", False),
+    ("軸4", "地政学・原産地", "UN Comtrade年次貿易統計", True),
+    ("軸5", "政策・規制リスク", "ECHA SVHC + METI特定重要物資 + Stockholm POPs", True),
+    ("軸6", "過去の供給途絶", "SEC EDGAR 8-K (米化学メジャー15社)", True),
+    ("軸7", "価格変動性", "化工日報市況欄RSSの数値抽出 / METI基準ナフサ", False),
 ]
 
 st.set_page_config(page_title="SDB 供給安定性", layout="wide")
 st.title("SDB 供給安定性 dashboard")
-st.caption("プロジェクト [`202605_sdb-supply-stability`](https://github.com/seanlee-sotas/sotas-sdb-supply-stability) | 7要素プロキシ指標による素材別供給リスクスコアリング")
+st.caption("[`202605_sdb-supply-stability`](https://github.com/seanlee-sotas/sotas-sdb-supply-stability) | 7要素プロキシ指標による素材別供給リスクの可視化")
 
 with st.sidebar:
     st.subheader("プロジェクト7軸ロードマップ")
     for code, name, source, active in AXES:
         icon = "✅" if active else "🚧"
         st.markdown(f"{icon} **{code}** {name}  \n　<small>{source}</small>", unsafe_allow_html=True)
+    st.divider()
     st.caption("詳細: `Projects/202605_sdb-supply-stability/` (Vault)")
 
 
 # ---------- shared loaders ----------
 @st.cache_data
 def load_reporters() -> dict[int, str]:
-    path = COMTRADE_DIR / "ref_reporters.json"
-    if not path.exists():
+    p = COMTRADE_DIR / "ref_reporters.json"
+    if not p.exists():
         return {}
-    return {r["reporterCode"]: r["reporterDesc"] for r in json.loads(path.read_text())}
+    return {r["reporterCode"]: r["reporterDesc"] for r in json.loads(p.read_text())}
 
 
 @st.cache_data
 def load_hs_desc() -> dict[str, str]:
-    path = COMTRADE_DIR / "ref_hs.json"
-    if not path.exists():
+    p = COMTRADE_DIR / "ref_hs.json"
+    if not p.exists():
         return {}
     out = {}
-    for r in json.loads(path.read_text()):
+    for r in json.loads(p.read_text()):
         code = r.get("id", "")
         text = r.get("text", "")
         out[code] = text.split(" - ", 1)[1] if " - " in text else text
@@ -55,18 +59,17 @@ def load_hs_desc() -> dict[str, str]:
 
 def latest_parquet(directory: Path, prefix: str):
     files = sorted(directory.glob(f"{prefix}_*.parquet"))
-    # Prefer full ingest over _quick samples
     non_quick = [p for p in files if "_quick" not in p.stem]
     if non_quick:
         return max(non_quick)
     return max(files) if files else None
 
 
-# ---------- tab 4: comtrade ----------
+# ---------- tab 4 ----------
 def render_axis4():
     parquet = latest_parquet(COMTRADE_DIR, "trade")
     if parquet is None:
-        st.error("`data/comtrade/trade_*.parquet` がありません。`uv run python ingest/comtrade.py --quick` を実行してください。")
+        st.error("`data/comtrade/trade_*.parquet` なし。`uv run python ingest/comtrade.py --quick` 実行。")
         return
 
     con = duckdb.connect(":memory:")
@@ -76,42 +79,36 @@ def render_axis4():
     total_rows = con.execute("SELECT COUNT(*) FROM trade").fetchone()[0]
 
     st.info(
-        "**軸4「地政学・原産地」のプロキシビュー** | "
-        "UN Comtrade年次貿易統計から、HS6コードごとの世界輸出/輸入の国別集中度を計算。"
+        "**軸4「地政学・原産地」** | UN Comtrade年次貿易統計から、HS6コードごとの世界輸出/輸入の国別集中度を計算。"
         "HHI・Top-Nシェア・単一国依存度で素材別の供給リスクの粗いシグナルを得る。"
     )
     st.caption(f"データ: `{parquet.name}` ({total_rows:,} rows)")
 
-    col_filter1, col_filter2, col_filter3 = st.columns(3)
-    with col_filter1:
+    c1, c2, c3 = st.columns(3)
+    with c1:
         hs_codes = [r[0] for r in con.execute("SELECT DISTINCT cmdCode FROM trade ORDER BY cmdCode").fetchall()]
         selected_hs = st.selectbox(
-            "HS6コード",
-            hs_codes,
-            format_func=lambda c: f"{c} — {hs_desc.get(c, '?')[:60]}",
-            key="ax4_hs",
+            "HS6コード", hs_codes,
+            format_func=lambda c: f"{c} — {hs_desc.get(c, '?')[:60]}", key="ax4_hs",
         )
-    with col_filter2:
+    with c2:
         flows = [r[0] for r in con.execute("SELECT DISTINCT flowCode FROM trade").fetchall()]
         flow_labels = {"X": "輸出 (輸出国別シェア)", "M": "輸入 (輸入国別シェア)"}
         selected_flow = st.selectbox("フロー", flows, format_func=lambda x: flow_labels.get(x, x), key="ax4_flow")
-    with col_filter3:
+    with c3:
         periods = [r[0] for r in con.execute("SELECT DISTINCT period FROM trade ORDER BY period DESC").fetchall()]
         selected_period = st.selectbox("期間", periods, key="ax4_period")
 
     df = con.execute(
-        """
-        SELECT reporterCode, primaryValue, qty, netWgt
-        FROM trade
-        WHERE cmdCode = ? AND flowCode = ? AND period = ?
-          AND partner2Code = 0 AND primaryValue > 0
-        ORDER BY primaryValue DESC
-        """,
+        """SELECT reporterCode, primaryValue, qty, netWgt FROM trade
+           WHERE cmdCode = ? AND flowCode = ? AND period = ?
+             AND partner2Code = 0 AND primaryValue > 0
+           ORDER BY primaryValue DESC""",
         [selected_hs, selected_flow, str(selected_period)],
     ).df()
 
     if df.empty:
-        st.warning("この組み合わせのデータはありません。")
+        st.warning("該当データなし。")
         return
 
     df["reporter"] = df["reporterCode"].map(lambda c: reporters.get(c, f"M49 {c}"))
@@ -122,16 +119,12 @@ def render_axis4():
     st.markdown(f"### HS {selected_hs} — {hs_desc.get(selected_hs, '?')}")
     st.caption(f"{flow_labels.get(selected_flow, selected_flow)}　|　{selected_period}年")
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("世界貿易額", f"${total / 1e9:,.2f}B")
-    c2.metric("報告国数", len(df))
-    c3.metric(
-        "HHI (0–10000)",
-        f"{hhi:,.0f}",
-        help="米司法省/FTC基準: <1500 低集中 / 1500–2500 中集中 / >2500 高集中",
-    )
-    c4.metric("Top-1 シェア", f"{df.iloc[0]['share_pct']:.1f}%", help=str(df.iloc[0]["reporter"]))
-    c5.metric("Top-3 シェア", f"{df.head(3)['share_pct'].sum():.1f}%")
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("世界貿易額", f"${total / 1e9:,.2f}B")
+    m2.metric("報告国数", len(df))
+    m3.metric("HHI (0–10000)", f"{hhi:,.0f}", help="<1500 低集中 / 1500–2500 中集中 / >2500 高集中")
+    m4.metric("Top-1 シェア", f"{df.iloc[0]['share_pct']:.1f}%", help=str(df.iloc[0]["reporter"]))
+    m5.metric("Top-3 シェア", f"{df.head(3)['share_pct'].sum():.1f}%")
 
     st.subheader("国別シェア Top 20")
     st.bar_chart(df.head(20).set_index("reporter")[["primaryValue"]], height=400)
@@ -146,97 +139,213 @@ def render_axis4():
 
     st.subheader("HHI 年次推移")
     trend = con.execute(
-        """
-        WITH per_reporter AS (
-          SELECT period, reporterCode, SUM(primaryValue) AS v
-          FROM trade
-          WHERE cmdCode = ? AND flowCode = ?
-            AND partner2Code = 0 AND primaryValue > 0
-          GROUP BY period, reporterCode
-        ),
-        period_total AS (SELECT period, SUM(v) AS total FROM per_reporter GROUP BY period)
-        SELECT pr.period, SUM(POW(pr.v / pt.total * 100, 2)) AS hhi
-        FROM per_reporter pr JOIN period_total pt USING (period)
-        GROUP BY pr.period ORDER BY pr.period
-        """,
+        """WITH per_reporter AS (
+             SELECT period, reporterCode, SUM(primaryValue) AS v FROM trade
+             WHERE cmdCode = ? AND flowCode = ?
+               AND partner2Code = 0 AND primaryValue > 0
+             GROUP BY period, reporterCode
+           ),
+           period_total AS (SELECT period, SUM(v) AS total FROM per_reporter GROUP BY period)
+           SELECT pr.period, SUM(POW(pr.v / pt.total * 100, 2)) AS hhi
+           FROM per_reporter pr JOIN period_total pt USING (period)
+           GROUP BY pr.period ORDER BY pr.period""",
         [selected_hs, selected_flow],
     ).df()
     if len(trend) > 1:
         st.line_chart(trend.set_index("period")["hhi"], height=300)
     else:
-        st.info("現データは1期のみ。多年次推移を見るには `uv run python ingest/comtrade.py` で全期間ingest。")
+        st.info("現データは1期のみ。`uv run python ingest/comtrade.py` で全期間ingest。")
 
 
-# ---------- tab 5: regulation ----------
+# ---------- tab 5 ----------
 def render_axis5():
-    parquet = latest_parquet(ECHA_DIR, "svhc")
-    if parquet is None:
-        st.error("`data/echa/svhc_*.parquet` がありません。`uv run python ingest/echa.py` を実行してください。")
+    svhc_p = latest_parquet(ECHA_DIR, "svhc")
+    meti_p = latest_parquet(REG_DIR, "meti_critical")
+    pops_p = latest_parquet(REG_DIR, "pops")
+
+    st.info(
+        "**軸5「政策・規制リスク」** | 3つの規制リストから素材ごとのウォッチリスト構築。"
+        "ECHA SVHC = EU高懸念物質、METI特定重要物資 = 日本経済安保、Stockholm POPs = 国際残留性有機汚染物質。"
+    )
+
+    sub_tab1, sub_tab2, sub_tab3, sub_tab4 = st.tabs(["🇪🇺 ECHA SVHC", "🇯🇵 METI 特定重要物資", "🌐 Stockholm POPs", "🔗 CAS横串検索"])
+
+    with sub_tab1:
+        if svhc_p is None:
+            st.error("`data/echa/svhc_*.parquet` なし。")
+        else:
+            con = duckdb.connect(":memory:")
+            con.execute(f"CREATE VIEW svhc AS SELECT * FROM '{svhc_p}'")
+            total = con.execute("SELECT COUNT(*) FROM svhc").fetchone()[0]
+            with_cas = con.execute("SELECT COUNT(*) FROM svhc WHERE cas_number IS NOT NULL AND cas_number != '-'").fetchone()[0]
+            latest = con.execute("SELECT MAX(date_of_inclusion) FROM svhc").fetchone()[0]
+            reasons = con.execute("SELECT COUNT(DISTINCT reason) FROM svhc").fetchone()[0]
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("SVHC 総数", total)
+            c2.metric("CAS番号付き", f"{with_cas} / {total}")
+            c3.metric("最新収載", str(latest)[:10] if latest else "—")
+            c4.metric("収載理由 種類", reasons)
+            st.caption(f"データ: `{svhc_p.name}` | source: ECHA Candidate List")
+
+            st.markdown("**収載理由 Top 10**")
+            reason_df = con.execute(
+                "SELECT reason, COUNT(*) AS cnt FROM svhc GROUP BY reason ORDER BY cnt DESC LIMIT 10"
+            ).df()
+            st.bar_chart(reason_df.set_index("reason")["cnt"], height=280)
+
+            st.markdown("**年次収載トレンド（規制リスクの早期警報）**")
+            yearly = con.execute(
+                """SELECT EXTRACT(YEAR FROM date_of_inclusion) AS year, COUNT(*) AS additions
+                   FROM svhc WHERE date_of_inclusion IS NOT NULL
+                   GROUP BY year ORDER BY year"""
+            ).df()
+            if not yearly.empty:
+                yearly["year"] = yearly["year"].astype(int)
+                st.bar_chart(yearly.set_index("year")["additions"], height=240)
+
+            st.markdown("**直近10件（規制追加 = 該当素材は将来制限の可能性）**")
+            recent = con.execute(
+                """SELECT date_of_inclusion, substance_name, cas_number, reason FROM svhc
+                   ORDER BY date_of_inclusion DESC NULLS LAST LIMIT 10"""
+            ).df()
+            recent["date_of_inclusion"] = recent["date_of_inclusion"].astype(str).str[:10]
+            recent.columns = ["収載日", "物質名", "CAS番号", "理由"]
+            st.dataframe(recent, use_container_width=True, hide_index=True)
+
+    with sub_tab2:
+        if meti_p is None:
+            st.error("`data/regulations/meti_critical_*.parquet` なし。")
+        else:
+            meti = pd.read_parquet(meti_p)
+            st.metric("特定重要物資 指定数", len(meti))
+            st.caption(f"データ: `{meti_p.name}` | source: 経産省 経済安全保障推進法")
+            st.markdown("**カテゴリ別**")
+            cat_count = meti["category"].value_counts()
+            st.bar_chart(cat_count, height=240)
+            disp = meti[["id", "name_ja", "name_en", "category", "designated_date"]].copy()
+            disp.columns = ["ID", "名称（日）", "名称（英）", "カテゴリ", "指定日"]
+            st.dataframe(disp, use_container_width=True, hide_index=True)
+
+    with sub_tab3:
+        if pops_p is None:
+            st.error("`data/regulations/pops_*.parquet` なし。")
+        else:
+            pops = pd.read_parquet(pops_p)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Annex A (廃絶)", (pops["annex"].str.startswith("A")).sum())
+            c2.metric("Annex B (制限)", (pops["annex"].str.startswith("B")).sum())
+            c3.metric("Annex C (非意図的)", (pops["annex"].str.contains("C")).sum())
+            st.caption(f"データ: `{pops_p.name}` | source: Stockholm Convention COP")
+            st.markdown("**タイプ別**")
+            st.bar_chart(pops["type"].value_counts(), height=240)
+            disp = pops[["id", "name_en", "cas", "annex", "type"]].copy()
+            disp.columns = ["ID", "物質名", "CAS", "Annex", "タイプ"]
+            st.dataframe(disp, use_container_width=True, hide_index=True)
+
+    with sub_tab4:
+        q = st.text_input("CAS番号で複数規制リストを横串検索 (例: 110-54-3, 50-29-3, 1763-23-1)", "")
+        if q:
+            cas = q.strip()
+            results = []
+            if svhc_p:
+                con = duckdb.connect(":memory:")
+                con.execute(f"CREATE VIEW svhc AS SELECT * FROM '{svhc_p}'")
+                hit = con.execute(
+                    "SELECT substance_name, date_of_inclusion, reason FROM svhc WHERE cas_number = ?", [cas]
+                ).df()
+                if not hit.empty:
+                    results.append(("ECHA SVHC (EU)", hit.iloc[0]["substance_name"], f"{str(hit.iloc[0]['date_of_inclusion'])[:10]} | {hit.iloc[0]['reason']}"))
+            if pops_p:
+                pops = pd.read_parquet(pops_p)
+                phit = pops[pops["cas"] == cas]
+                if not phit.empty:
+                    results.append(("Stockholm POPs", phit.iloc[0]["name_en"], f"Annex {phit.iloc[0]['annex']} | {phit.iloc[0]['type']}"))
+            if results:
+                st.success(f"CAS {cas} は {len(results)} 規制リストに該当")
+                for src, name, detail in results:
+                    st.markdown(f"- **{src}**: {name}  \n  　{detail}")
+            else:
+                st.info(f"CAS {cas} は現在ingest済の規制リストには該当なし。")
+
+
+# ---------- tab 6 ----------
+def render_axis6():
+    sec_p = latest_parquet(SEC_DIR, "filings_8k")
+
+    st.info(
+        "**軸6「過去の供給途絶」** | SEC EDGAR 8-K（米化学メジャー15社の臨時開示）。"
+        "Item 8.01 (Other Events) と Item 2.06 (Material Impairments) が FM 発令・大規模事故・撤退の主な箱。"
+        "出現頻度がその企業/業界のオペレーションリスクの粗い代理指標。"
+    )
+
+    if sec_p is None:
+        st.error("`data/sec/filings_8k_*.parquet` なし。`uv run python ingest/sec_8k.py` 実行。")
         return
 
     con = duckdb.connect(":memory:")
-    con.execute(f"CREATE VIEW svhc AS SELECT * FROM '{parquet}'")
+    con.execute(f"CREATE VIEW sec AS SELECT * FROM '{sec_p}'")
+    total = con.execute("SELECT COUNT(*) FROM sec").fetchone()[0]
+    cos = con.execute("SELECT COUNT(DISTINCT ticker) FROM sec").fetchone()[0]
+    st.caption(f"データ: `{sec_p.name}` ({total:,} filings, {cos} companies, since 2023)")
 
-    st.info(
-        "**軸5「政策・規制リスク」のプロキシビュー** | "
-        "EU ECHAのSVHC候補リスト（Substances of Very High Concern）を起点に、"
-        "規制対象物質をSDBの素材CASと突合する基盤を構築。化審法・METI特定重要物資・US TSCA・POPs条約は順次追加。"
-    )
-    st.caption(f"データ: `{parquet.name}`")
-
-    total = con.execute("SELECT COUNT(*) FROM svhc").fetchone()[0]
-    with_cas = con.execute("SELECT COUNT(*) FROM svhc WHERE cas_number IS NOT NULL AND cas_number != '-'").fetchone()[0]
-    latest_date = con.execute("SELECT MAX(date_of_inclusion) FROM svhc").fetchone()[0]
-    reasons = con.execute("SELECT COUNT(DISTINCT reason) FROM svhc").fetchone()[0]
+    SUPPLY_ITEMS = ["1.02", "1.03", "2.04", "2.06", "8.01"]
+    supply_filter = ",".join(f"'{x}'" for x in SUPPLY_ITEMS)
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("SVHC 総数", total)
-    c2.metric("CAS番号付き", f"{with_cas} / {total}", help="CASなしのものはポリマーや混合物")
-    c3.metric("最新収載日", str(latest_date)[:10] if latest_date else "—")
-    c4.metric("収載理由 種類数", reasons)
+    c1.metric("全 8-K filings", total)
+    sd_count = con.execute(f"""
+        SELECT COUNT(*) FROM sec
+        WHERE list_has(string_split(items, ','), '8.01')
+           OR list_has(string_split(items, ','), '2.06')
+           OR list_has(string_split(items, ','), '2.04')
+           OR list_has(string_split(items, ','), '1.02')
+           OR list_has(string_split(items, ','), '1.03')
+    """).fetchone()[0]
+    c2.metric("供給途絶関連 (推定)", sd_count, help="Item 1.02/1.03/2.04/2.06/8.01 を含むfiling数")
+    earliest = con.execute("SELECT MIN(filing_date) FROM sec").fetchone()[0]
+    latest = con.execute("SELECT MAX(filing_date) FROM sec").fetchone()[0]
+    c3.metric("最初の filing", earliest)
+    c4.metric("最新の filing", latest)
 
-    st.subheader("収載理由の内訳 (Top 10)")
-    reason_df = con.execute(
-        """SELECT reason, COUNT(*) AS cnt FROM svhc GROUP BY reason ORDER BY cnt DESC LIMIT 10"""
-    ).df()
-    st.bar_chart(reason_df.set_index("reason")["cnt"], height=320)
+    st.markdown("**企業別 8-K filing数（2023年以降）**")
+    by_co = con.execute("""
+        SELECT ticker, COUNT(*) AS filings,
+               COUNT(*) FILTER (WHERE list_has(string_split(items, ','), '8.01')) AS item_801,
+               COUNT(*) FILTER (WHERE list_has(string_split(items, ','), '2.06')) AS item_206
+        FROM sec GROUP BY ticker ORDER BY filings DESC
+    """).df()
+    st.bar_chart(by_co.set_index("ticker")["filings"], height=280)
 
-    st.subheader("年次収載トレンド")
-    yearly = con.execute(
-        """SELECT EXTRACT(YEAR FROM date_of_inclusion) AS year, COUNT(*) AS additions
-           FROM svhc WHERE date_of_inclusion IS NOT NULL
-           GROUP BY year ORDER BY year"""
-    ).df()
-    if not yearly.empty:
-        yearly["year"] = yearly["year"].astype(int)
-        st.bar_chart(yearly.set_index("year")["additions"], height=300)
+    st.markdown("**Item 8.01 (Other Events) の頻度 — FM・事故・大規模イベント候補**")
+    item_801 = con.execute("""
+        SELECT filing_date, ticker, company_name, items, primary_desc, accession_url
+        FROM sec
+        WHERE list_has(string_split(items, ','), '8.01')
+        ORDER BY filing_date DESC LIMIT 25
+    """).df()
+    if not item_801.empty:
+        item_801["link"] = item_801["accession_url"].map(lambda u: f"[開示]({u})")
+        disp = item_801[["filing_date", "ticker", "company_name", "items", "primary_desc", "link"]]
+        disp.columns = ["日付", "Ticker", "企業名", "Items", "種別", "リンク"]
+        st.dataframe(disp, use_container_width=True, hide_index=True)
 
-    st.subheader("最新10件（直近の規制追加 = 早期警報）")
-    recent = con.execute(
-        """SELECT date_of_inclusion, substance_name, cas_number, reason
-           FROM svhc ORDER BY date_of_inclusion DESC NULLS LAST LIMIT 10"""
-    ).df()
-    recent["date_of_inclusion"] = recent["date_of_inclusion"].astype(str).str[:10]
-    recent.columns = ["収載日", "物質名", "CAS番号", "理由"]
-    st.dataframe(recent, use_container_width=True, hide_index=True)
-
-    with st.expander("CAS番号で検索"):
-        q = st.text_input("CAS番号 (例: 110-54-3)", "")
-        if q:
-            hits = con.execute(
-                "SELECT substance_name, cas_number, date_of_inclusion, reason FROM svhc WHERE cas_number = ?",
-                [q.strip()],
-            ).df()
-            if hits.empty:
-                st.info(f"CAS {q} はSVHCリストに該当なし。")
-            else:
-                st.success(f"CAS {q} はSVHC登録済（{len(hits)}件）")
-                st.dataframe(hits, use_container_width=True, hide_index=True)
+    with st.expander("Item 2.06 (Material Impairments) 全件"):
+        item_206 = con.execute("""
+            SELECT filing_date, ticker, company_name, items, primary_desc, accession_url
+            FROM sec WHERE list_has(string_split(items, ','), '2.06') ORDER BY filing_date DESC
+        """).df()
+        if item_206.empty:
+            st.info("該当なし")
+        else:
+            item_206["link"] = item_206["accession_url"].map(lambda u: f"[開示]({u})")
+            disp = item_206[["filing_date", "ticker", "company_name", "primary_desc", "link"]]
+            disp.columns = ["日付", "Ticker", "企業名", "種別", "リンク"]
+            st.dataframe(disp, use_container_width=True, hide_index=True)
 
 
-# ---------- Tabs ----------
-tab_overview, tab4, tab5, tab_other = st.tabs(
-    ["🏠 Overview", "🌐 軸4 地政学", "📋 軸5 規制リスク", "🚧 他軸 (実装待ち)"]
+# ---------- Top-level tabs ----------
+tab_overview, tab4, tab5, tab6, tab_other = st.tabs(
+    ["🏠 Overview", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "🚧 他軸 (実装待ち)"]
 )
 
 with tab_overview:
@@ -244,23 +353,21 @@ with tab_overview:
     st.markdown(
         """
         住友ゴム梶山さんからの要望「SDBで素材ごとの**供給安定性**を見たい」を起点に、
-        供給安定性を**7要素**に分解し、それぞれを公開ソース由来のプロキシ指標で代替できる基盤を構築している。
+        供給安定性を**7要素**に分解し、各要素を公開ソース由来のプロキシ指標で機械算出する基盤を構築。
 
         - **データ収集**: 各軸ごとに ingest スクリプトを `ingest/` に配置、Parquet/JSONで `data/` 配下に蓄積
-        - **可視化**: Streamlit + DuckDB でリアルタイムクエリ
-        - **配信**: Streamlit Cloud で社内メンバーに URL 共有（リモート前提）
-        - **ソース**: GitHub private `sotas-sdb-supply-stability`
+        - **可視化**: Streamlit + DuckDB でリアルタイムクエリ。データはGit-committedで再現性確保
+        - **配信**: Streamlit Cloud で社内メンバーに URL 共有（リモート前提・自前インフラ不要）
+        - **ソース**: GitHub private [`sotas-sdb-supply-stability`](https://github.com/seanlee-sotas/sotas-sdb-supply-stability)
         """
     )
 
     st.subheader("実装進捗")
-    progress_data = []
+    progress = []
     for code, name, source, active in AXES:
-        progress_data.append({"軸": code, "要素": name, "状態": "✅ 実装済" if active else "🚧 未着手", "ソース": source})
-    import pandas as pd
-    st.dataframe(pd.DataFrame(progress_data), use_container_width=True, hide_index=True)
-
-    st.caption("各軸の詳細は上のタブから。Overviewはセクションの全体像ガイド。")
+        progress.append({"軸": code, "要素": name, "状態": "✅ 実装済" if active else "🚧 未着手", "データソース": source})
+    st.dataframe(pd.DataFrame(progress), use_container_width=True, hide_index=True)
+    st.caption("各軸の詳細は上のタブから。新しい軸が ingest 完了次第、順次タブを追加していく。")
 
 with tab4:
     render_axis4()
@@ -268,17 +375,19 @@ with tab4:
 with tab5:
     render_axis5()
 
+with tab6:
+    render_axis6()
+
 with tab_other:
     st.markdown(
         """
-        ### 未実装の軸（順次着手）
+        ### 未実装の軸
 
-        - **軸1 生産能力・新増設** — EDINET API（既に443社XBRL取得済）から有報「生産能力」セクション抽出。`/research-company-jp` skillの成果物を活用
-        - **軸2 需給バランス** — 石油化学工業協会の月次エチレン稼働率PDF + METI化学工業生産動態統計
-        - **軸3 サプライヤー集中度** — EDINET主要販売先 + 業界団体加盟社別能力データの統合
-        - **軸6 過去の供給途絶** — 既vault `3. RSS/化学工業日報`等のRSSアーカイブからLLM抽出（FM発令・事故・停止）
-        - **軸7 価格変動性** — 同RSSの「市況欄」から数値時系列抽出 + METI基準ナフサ価格
+        - **軸1 生産能力・新増設** — EDINET API（既に443社XBRL取得済 via `/research-company-jp` skill）から有報「生産能力」セクション抽出
+        - **軸2 需給バランス** — 石油化学工業協会の月次エチレン稼働率PDF + METI化学工業生産動態統計（月次品目別生産量）
+        - **軸3 サプライヤー集中度** — EDINET主要販売先 + 業界団体加盟社別能力データを統合してHHI算出
+        - **軸7 価格変動性** — vault `3. RSS/化学工業日報` 市況欄からLLM抽出 + METI基準ナフサ価格
 
-        各軸のデータが揃い次第、このタブから分岐させていく。
+        各軸のingest基盤が完成次第、このタブから分岐させる。
         """
     )
