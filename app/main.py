@@ -13,6 +13,8 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import chemicals_loader as cl  # noqa: E402
 import scoring  # noqa: E402
+import scoring_llm  # noqa: E402
+import gemini_client as gc  # noqa: E402
 
 ACCENT = "#0F766E"
 ACCENT_LIGHT = "#5EEAD4"
@@ -1535,12 +1537,30 @@ def render_score():
 
     # --- Narrative review ---
     st.markdown("### 📝 総評")
-    review = scoring.narrative(chem, sub, comp)
-    st.markdown(review)
-    st.caption(
-        "🤖 ルールベース生成（軸スコアの最小/最大/カバレッジから自動構成）。"
-        "API予算回復時に Claude Sonnet 4.6 を介した文脈考慮型ナラティブに切替予定。"
-    )
+    llm_available = gc.is_available()
+    if llm_available:
+        col_a, col_b = st.columns([4, 1])
+        with col_b:
+            use_llm = st.toggle("LLM生成", value=True, key=f"score_llm_toggle_{selected_cas}",
+                                help="Gemini 2.5 Flash で文脈考慮型レビュー生成 (~1秒)")
+    else:
+        use_llm = False
+
+    if use_llm:
+        with st.spinner("Gemini 2.5 Flash で総評生成中..."):
+            review = scoring_llm.llm_narrative(chem, sub, comp)
+        st.markdown(review)
+        st.caption("🤖 Gemini 2.5 Flash 生成 (無料枠 1500 RPD)")
+    else:
+        review = scoring.narrative(chem, sub, comp)
+        st.markdown(review)
+        if llm_available:
+            st.caption("🔧 ルールベース生成 (上の toggle で LLM 生成に切替可)")
+        else:
+            st.caption(
+                "🔧 ルールベース生成（Gemini key 未設定）。"
+                "`~/.config/gemini/keys.json` に `{\"api_key\": \"...\"}` を設置すると LLM 版に切替可"
+            )
 
 
 # ---------- Top-level tabs ----------
