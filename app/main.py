@@ -37,11 +37,12 @@ REG_DIR = ROOT / "data" / "regulations"
 SEC_DIR = ROOT / "data" / "sec"
 EDINET_DIR = ROOT / "data" / "edinet"
 WB_DIR = ROOT / "data" / "worldbank"
+SUPPLIER_DIR = ROOT / "data" / "supplier"
 
 AXES = [
     ("軸1", "生産能力・新増設", "EDINET MD（443社）から「生産能力」スニペット抽出", True),
     ("軸2", "需給バランス", "石化協月次稼働率 / METI生産動態統計", False),
-    ("軸3", "サプライヤー集中度", "EDINET主要販売先 + 業界団体加盟社能力", False),
+    ("軸3", "サプライヤー集中度", "EDINETスニペット由来の素材別 JP上場サプライヤー数（proxy）", True),
     ("軸4", "地政学・原産地", "UN Comtrade年次貿易統計", True),
     ("軸5", "政策・規制リスク", "ECHA SVHC + METI特定重要物資 + Stockholm POPs", True),
     ("軸6", "過去の供給途絶", "SEC EDGAR 8-K (米化学メジャー15社)", True),
@@ -576,6 +577,76 @@ def render_axis7():
     st.dataframe(latest, use_container_width=True, hide_index=True)
 
 
+# ---------- tab 3 ----------
+def render_axis3():
+    p = latest_parquet(SUPPLIER_DIR, "jp_supplier_count")
+
+    st.info(
+        "**軸3「サプライヤー集中度」(proxy)** | "
+        "本格的なHHIには各社の生産能力数値が必要だが、EDINET XBRLでは構造化されていない。"
+        "暫定proxy: 「素材名を有報/中計/サステナレポートで言及している」JP上場企業の数を数え、"
+        "「3社以下＝高集中」「4-10社＝中集中」「11社以上＝低集中」の3バンドで色分け。"
+        "国内供給多様性のラフな代理指標として、軸4（global集中度）と組み合わせて読む。"
+    )
+
+    if p is None:
+        st.error("`data/supplier/jp_supplier_count_*.parquet` なし。`uv run python ingest/supplier_concentration.py` 実行。")
+        return
+
+    df = pd.read_parquet(p)
+    st.caption(f"データ: `{p.name}` ({len(df)} materials, JP-listed chemical universe 385社が母集団)")
+
+    BAND_LABEL = {
+        "high_concentration": "🔴 高集中 (3社以下)",
+        "moderate_concentration": "🟡 中集中 (4-10社)",
+        "low_concentration": "🟢 低集中 (11社以上)",
+        "no_data": "⚪ データなし",
+    }
+    BAND_ORDER = ["high_concentration", "moderate_concentration", "low_concentration", "no_data"]
+
+    counts = df["concentration_band"].value_counts().reindex(BAND_ORDER, fill_value=0)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🔴 高集中", counts["high_concentration"], help="JP上場サプライヤー≤3社の素材数")
+    c2.metric("🟡 中集中", counts["moderate_concentration"])
+    c3.metric("🟢 低集中", counts["low_concentration"])
+    c4.metric("⚪ データなし", counts["no_data"])
+
+    st.markdown("**🔴 高集中素材リスト（国内供給リスク要監視）**")
+    high = df[df["concentration_band"] == "high_concentration"].sort_values("jp_supplier_count")
+    if not high.empty:
+        disp = high[["name_ja", "category", "jp_supplier_count", "top_companies"]].copy()
+        disp.columns = ["素材", "カテゴリ", "JPサプライヤー数", "Top企業"]
+        st.dataframe(disp, use_container_width=True, hide_index=True)
+    else:
+        st.success("高集中素材なし")
+
+    st.markdown("**全素材ランキング (JP上場サプライヤー数の昇順)**")
+    sorted_df = df.sort_values("jp_supplier_count")
+    sorted_df["band_label"] = sorted_df["concentration_band"].map(BAND_LABEL)
+    fig = px.bar(
+        sorted_df,
+        x="jp_supplier_count", y="name_ja", orientation="h",
+        color="concentration_band",
+        color_discrete_map={
+            "high_concentration": DANGER,
+            "moderate_concentration": "#F59E0B",
+            "low_concentration": "#10B981",
+            "no_data": MUTED,
+        },
+        hover_data={"top_companies": True, "concentration_band": False, "name_ja": False},
+        labels={"jp_supplier_count": "JP上場サプライヤー数", "name_ja": ""},
+    )
+    fig.update_layout(showlegend=False)
+    st.plotly_chart(styled_fig(fig, height=520), use_container_width=True)
+
+    with st.expander("全データ"):
+        disp = df.copy()
+        disp["band_label"] = disp["concentration_band"].map(BAND_LABEL)
+        disp = disp[["name_ja", "name_en", "category", "jp_supplier_count", "band_label", "top_companies"]]
+        disp.columns = ["素材", "英名", "カテゴリ", "サプライヤー数", "集中度バンド", "Top企業"]
+        st.dataframe(disp, use_container_width=True, hide_index=True)
+
+
 # ---------- cross-axis tab ----------
 @st.cache_data
 def load_materials() -> list[dict]:
@@ -772,8 +843,8 @@ def render_cross():
 
 
 # ---------- Top-level tabs ----------
-tab_overview, tab_cross, tab1, tab4, tab5, tab6, tab7, tab_other = st.tabs(
-    ["🏠 Overview", "🔗 素材横串", "🏭 軸1 生産能力", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "💹 軸7 価格変動性", "🚧 他軸 (実装待ち)"]
+tab_overview, tab_cross, tab1, tab3, tab4, tab5, tab6, tab7, tab_other = st.tabs(
+    ["🏠 Overview", "🔗 素材横串", "🏭 軸1 生産能力", "🤝 軸3 サプライヤー集中", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "💹 軸7 価格変動性", "🚧 他軸 (実装待ち)"]
 )
 
 with tab_overview:
@@ -803,6 +874,9 @@ with tab_cross:
 with tab1:
     render_axis1()
 
+with tab3:
+    render_axis3()
+
 with tab4:
     render_axis4()
 
@@ -820,9 +894,8 @@ with tab_other:
         """
         ### 未実装の軸
 
-        - **軸2 需給バランス** — 石油化学工業協会の月次エチレン稼働率PDF + METI化学工業生産動態統計（月次品目別生産量）
-        - **軸3 サプライヤー集中度** — EDINET主要販売先 + 業界団体加盟社別能力データを統合してHHI算出
+        - **軸2 需給バランス** — 石油化学工業協会の月次エチレン稼働率PDF + METI化学工業生産動態統計（月次品目別生産量）。次フェーズで METI e-Stat API か JPCA PDF スクレイピングで実装
 
-        各軸のingest基盤が完成次第、このタブから分岐させる。
+        7軸中6軸 (1/3/4/5/6/7) は実装済。各タブから詳細確認可能。
         """
     )
