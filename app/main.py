@@ -12,6 +12,7 @@ ECHA_DIR = ROOT / "data" / "echa"
 REG_DIR = ROOT / "data" / "regulations"
 SEC_DIR = ROOT / "data" / "sec"
 EDINET_DIR = ROOT / "data" / "edinet"
+WB_DIR = ROOT / "data" / "worldbank"
 
 AXES = [
     ("軸1", "生産能力・新増設", "EDINET MD（443社）から「生産能力」スニペット抽出", True),
@@ -20,7 +21,7 @@ AXES = [
     ("軸4", "地政学・原産地", "UN Comtrade年次貿易統計", True),
     ("軸5", "政策・規制リスク", "ECHA SVHC + METI特定重要物資 + Stockholm POPs", True),
     ("軸6", "過去の供給途絶", "SEC EDGAR 8-K (米化学メジャー15社)", True),
-    ("軸7", "価格変動性", "化工日報市況欄RSSの数値抽出 / METI基準ナフサ", False),
+    ("軸7", "価格変動性", "World Bank Pink Sheet 月次商品価格 (1960–)", True),
 ]
 
 st.set_page_config(page_title="SDB 供給安定性", layout="wide")
@@ -395,9 +396,99 @@ def render_axis1():
                 st.caption(f"出典: `{r['file_path']}`")
 
 
+# ---------- tab 7 ----------
+def render_axis7():
+    p = latest_parquet(WB_DIR, "prices_monthly")
+
+    st.info(
+        "**軸7「価格変動性」** | World Bank Pink Sheet 月次商品価格（1960年〜現在）。"
+        "ゴム TSR20/RSS3、原油（Brent/WTI/Dubai）、天然ガス（JP/EU/US）、ベース金属など、"
+        "rubber/tire/petchem 関連の主要15品目で月次ボラティリティと長期トレンドを可視化。"
+    )
+
+    if p is None:
+        st.error("`data/worldbank/prices_monthly_*.parquet` なし。`uv run python ingest/worldbank_prices.py` 実行。")
+        return
+
+    con = duckdb.connect(":memory:")
+    con.execute(f"CREATE VIEW prices AS SELECT * FROM '{p}'")
+    total = con.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
+    commodities = con.execute("SELECT COUNT(DISTINCT commodity) FROM prices").fetchone()[0]
+    drange = con.execute("SELECT MIN(date), MAX(date) FROM prices").fetchone()
+    st.caption(f"データ: `{p.name}` ({total:,} rows, {commodities} commodities, {drange[0].date()}〜{drange[1].date()})")
+
+    co_list = con.execute("SELECT DISTINCT commodity, name FROM prices ORDER BY commodity").df()
+    co_map = dict(zip(co_list["commodity"], co_list["name"]))
+    selected = st.selectbox(
+        "商品",
+        co_list["commodity"].tolist(),
+        format_func=lambda c: f"{co_map.get(c, c)} ({c})",
+        index=co_list["commodity"].tolist().index("RUBBER_TSR20") if "RUBBER_TSR20" in co_map else 0,
+        key="ax7_co",
+    )
+
+    years_back = st.slider("表示期間（年）", 1, 30, 10, key="ax7_years")
+
+    df = con.execute(
+        """SELECT date, price, unit FROM prices
+           WHERE commodity = ?
+             AND date >= date_sub(current_date, INTERVAL ? YEAR)
+           ORDER BY date""",
+        [selected, years_back],
+    ).df()
+
+    if df.empty:
+        st.warning("該当データなし。")
+        return
+
+    unit = df["unit"].iloc[0]
+    df["yoy_pct"] = df["price"].pct_change(12) * 100
+    df["rolling_vol_12m"] = df["price"].pct_change().rolling(12).std() * (12 ** 0.5) * 100  # annualized vol %
+
+    latest_p = df.iloc[-1]["price"]
+    latest_yoy = df.iloc[-1]["yoy_pct"]
+    avg_vol = df["rolling_vol_12m"].dropna().mean()
+    max_p = df["price"].max()
+    min_p = df["price"].min()
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("直近価格", f"{latest_p:,.2f} {unit}")
+    c2.metric("YoY 変化", f"{latest_yoy:+.1f}%" if pd.notna(latest_yoy) else "—")
+    c3.metric("年率ボラティリティ平均", f"{avg_vol:.1f}%", help="12ヶ月rolling, 月次リターンの年率化標準偏差")
+    c4.metric("レンジ", f"{min_p:.2f} – {max_p:.2f}")
+
+    st.subheader(f"{co_map.get(selected, selected)} — 月次価格推移")
+    st.line_chart(df.set_index("date")["price"], height=320)
+
+    st.subheader("YoY 変化率（前年同月比）")
+    st.line_chart(df.set_index("date")["yoy_pct"], height=240)
+
+    st.subheader("年率ボラティリティ（12ヶ月rolling）")
+    st.line_chart(df.set_index("date")["rolling_vol_12m"], height=240)
+
+    st.divider()
+    st.subheader("全商品の直近YoY変化率")
+    latest = con.execute(
+        """WITH ranked AS (
+             SELECT commodity, name, date, price,
+                    LAG(price, 12) OVER (PARTITION BY commodity ORDER BY date) AS price_12m_ago,
+                    ROW_NUMBER() OVER (PARTITION BY commodity ORDER BY date DESC) AS rn
+             FROM prices
+           )
+           SELECT name, commodity, date, price,
+                  (price / price_12m_ago - 1) * 100 AS yoy_pct
+           FROM ranked WHERE rn = 1 ORDER BY yoy_pct DESC NULLS LAST"""
+    ).df()
+    latest["price"] = latest["price"].map(lambda v: f"{v:,.2f}")
+    latest["yoy_pct"] = latest["yoy_pct"].map(lambda v: f"{v:+.1f}%" if pd.notna(v) else "—")
+    latest["date"] = latest["date"].astype(str).str[:10]
+    latest.columns = ["商品", "コード", "直近月", "価格", "YoY"]
+    st.dataframe(latest, use_container_width=True, hide_index=True)
+
+
 # ---------- Top-level tabs ----------
-tab_overview, tab1, tab4, tab5, tab6, tab_other = st.tabs(
-    ["🏠 Overview", "🏭 軸1 生産能力", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "🚧 他軸 (実装待ち)"]
+tab_overview, tab1, tab4, tab5, tab6, tab7, tab_other = st.tabs(
+    ["🏠 Overview", "🏭 軸1 生産能力", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "💹 軸7 価格変動性", "🚧 他軸 (実装待ち)"]
 )
 
 with tab_overview:
@@ -433,6 +524,9 @@ with tab5:
 with tab6:
     render_axis6()
 
+with tab7:
+    render_axis7()
+
 with tab_other:
     st.markdown(
         """
@@ -440,7 +534,6 @@ with tab_other:
 
         - **軸2 需給バランス** — 石油化学工業協会の月次エチレン稼働率PDF + METI化学工業生産動態統計（月次品目別生産量）
         - **軸3 サプライヤー集中度** — EDINET主要販売先 + 業界団体加盟社別能力データを統合してHHI算出
-        - **軸7 価格変動性** — vault `3. RSS/化学工業日報` 市況欄からLLM抽出 + METI基準ナフサ価格
 
         各軸のingest基盤が完成次第、このタブから分岐させる。
         """
