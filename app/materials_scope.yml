@@ -1,0 +1,178 @@
+# Supply-stability dashboard scope configuration.
+#
+# This file defines:
+#   - pinned:    CAS that should appear at the top of selectors / be in the default summary view
+#   - industries: per-industry weight templates for the composite supply-risk score
+#   - categories: display order + JA labels for category facets
+#
+# The full chemical universe lives in data/chemicals/chemicals.parquet (CAS-keyed).
+# materials_scope.yml is intentionally thin — only opinions about display + scoring.
+
+# ---------------------------------------------------------------------------
+# Pinned CAS (currently rubber/tire-focused, from the original materials.yml)
+# ---------------------------------------------------------------------------
+pinned:
+  - cas: "74-85-1"      # Ethylene
+    note: "汎用モノマー"
+  - cas: "115-07-1"     # Propylene
+    note: "汎用モノマー"
+  - cas: "106-99-0"     # 1,3-Butadiene
+    note: "合成ゴム原料"
+  - cas: "100-42-5"     # Styrene
+    note: "SBR/PS原料"
+  - cas: "9006-04-6"    # Natural rubber
+    note: "天然ゴム"
+  - cas: "9003-55-8"    # SBR
+    note: "汎用合成ゴム"
+  - cas: "9003-17-2"    # BR (polybutadiene)
+    note: "高反発合成ゴム"
+  - cas: "9003-18-3"    # NBR (nitrile rubber)
+    note: "耐油合成ゴム"
+  - cas: "1333-86-4"    # Carbon black
+    note: "ゴム補強充填材"
+  - cas: "7631-86-9"    # Silica
+    note: "ゴム補強充填材 (低燃費タイヤ)"
+  - cas: "9002-86-2"    # PVC
+    note: "汎用樹脂"
+  - cas: "9002-88-4"    # PE
+    note: "汎用樹脂"
+  - cas: "9003-07-0"    # PP
+    note: "汎用樹脂"
+  - cas: "63148-62-9"   # PDMS (silicone)
+    note: "シリコーンゴム"
+  - cas: "26780-96-1"   # TMQ antioxidant
+    note: "ゴム老化防止剤"
+
+# ---------------------------------------------------------------------------
+# Industry-specific axis weights for composite score (must sum to 1.0)
+# Used by SDB integration design (see Projects/202605_sdb-supply-stability/analysis_sdb_integration_design.md)
+# ---------------------------------------------------------------------------
+industries:
+  rubber_tire:
+    name_ja: タイヤ・ゴム
+    name_en: Rubber & Tire
+    weights:
+      axis1_capacity: 0.20
+      axis2_supply_demand: 0.15
+      axis3_jp_concentration: 0.20
+      axis4_global_hhi: 0.15
+      axis5_regulation: 0.10
+      axis6_events: 0.10
+      axis7_price: 0.10
+  semiconductor:
+    name_ja: 半導体材料
+    name_en: Semiconductor Materials
+    weights:
+      axis1_capacity: 0.15
+      axis2_supply_demand: 0.10
+      axis3_jp_concentration: 0.25     # 国産化が重要
+      axis4_global_hhi: 0.20            # 地政学リスク高
+      axis5_regulation: 0.15            # PFAS規制等
+      axis6_events: 0.10
+      axis7_price: 0.05
+  pharma_intermediate:
+    name_ja: 医薬中間体
+    name_en: Pharma Intermediates
+    weights:
+      axis1_capacity: 0.10
+      axis2_supply_demand: 0.10
+      axis3_jp_concentration: 0.15
+      axis4_global_hhi: 0.25            # API集中度問題
+      axis5_regulation: 0.25            # GMP/各国規制
+      axis6_events: 0.10
+      axis7_price: 0.05
+  commodity_plastic:
+    name_ja: 汎用樹脂
+    name_en: Commodity Plastics
+    weights:
+      axis1_capacity: 0.25              # 大型プラント増減が直結
+      axis2_supply_demand: 0.20
+      axis3_jp_concentration: 0.10
+      axis4_global_hhi: 0.10
+      axis5_regulation: 0.05
+      axis6_events: 0.10
+      axis7_price: 0.20                 # 原油連動性高い
+
+  # Default fallback (when industry not specified)
+  default:
+    name_ja: 汎用
+    name_en: Default
+    weights:
+      axis1_capacity: 0.15
+      axis2_supply_demand: 0.15
+      axis3_jp_concentration: 0.15
+      axis4_global_hhi: 0.15
+      axis5_regulation: 0.15
+      axis6_events: 0.10
+      axis7_price: 0.15
+
+# ---------------------------------------------------------------------------
+# Display categories — facet/filter UI ordering
+# ---------------------------------------------------------------------------
+categories:
+  - id: monomer
+    name_ja: モノマー
+    sort: 10
+  - id: polymer
+    name_ja: ポリマー
+    sort: 20
+  - id: rubber_chemical
+    name_ja: ゴム配合薬品
+    sort: 30
+  - id: additive
+    name_ja: 添加剤
+    sort: 40
+  - id: plasticizer
+    name_ja: 可塑剤
+    sort: 50
+  - id: filler
+    name_ja: 充填材
+    sort: 60
+  - id: pigment
+    name_ja: 顔料
+    sort: 70
+  - id: solvent
+    name_ja: 溶剤
+    sort: 80
+  - id: inorganic
+    name_ja: 無機化学品
+    sort: 90
+  - id: catalyst
+    name_ja: 触媒
+    sort: 100
+  - id: surfactant
+    name_ja: 界面活性剤
+    sort: 110
+  - id: battery_material
+    name_ja: 電池材料
+    sort: 120
+  - id: semiconductor
+    name_ja: 半導体材料
+    sort: 130
+  - id: fluorochemical
+    name_ja: フッ素化学品
+    sort: 140
+  - id: fertilizer
+    name_ja: 肥料原料
+    sort: 150
+  - id: specialty
+    name_ja: その他特殊
+    sort: 200
+  - id: regulated
+    name_ja: 規制物質 (SVHC/POPs)
+    sort: 210
+  - id: other
+    name_ja: その他
+    sort: 999
+
+# ---------------------------------------------------------------------------
+# Scoring thresholds (per-axis) — A-F grades based on raw indicator
+# ---------------------------------------------------------------------------
+scoring:
+  grade_breakpoints:
+    A: 85   # ≥85 → A
+    B: 70
+    C: 55
+    D: 40
+    E: 25
+    # < 25 → F

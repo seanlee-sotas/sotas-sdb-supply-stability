@@ -1,5 +1,6 @@
 """SDB 供給安定性 dashboard — 7軸プロキシビュー."""
 import json
+import sys
 from pathlib import Path
 
 import duckdb
@@ -8,6 +9,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import chemicals_loader as cl  # noqa: E402
 
 ACCENT = "#0F766E"
 ACCENT_LIGHT = "#5EEAD4"
@@ -853,55 +857,125 @@ def render_axis3():
         st.dataframe(disp, use_container_width=True, hide_index=True)
 
 
-# ---------- cross-axis tab ----------
+# ---------- cross-axis tab (chemicals.parquet-driven) ----------
 @st.cache_data
-def load_materials() -> list[dict]:
-    p = Path(__file__).resolve().parent / "materials.yml"
-    if not p.exists():
-        return []
-    return yaml.safe_load(p.read_text())["materials"]
+def load_all_chemicals_df():
+    return cl.all_chemicals()
 
 
 def render_cross():
-    materials = load_materials()
-    if not materials:
-        st.error("`app/materials.yml` なし。")
+    chem_df = load_all_chemicals_df()
+    if chem_df.empty:
+        st.error("`data/chemicals/chemicals.parquet` なし。`ingest/chemicals/seed_compile.py → pubchem_ingest.py → hs_map.py` 実行。")
         return
 
+    pinned_count = chem_df["is_pinned"].sum()
     st.info(
-        "**🔗 素材横串ビュー** | 個別素材を選ぶと、5軸全部のデータが一画面に集約される。"
-        "「ブタジエンゴム」を選んだ瞬間に → 軸4の集中度・軸5の規制ヒット・軸6の関連企業8-K・軸7の価格・軸1の生産能力言及が一覧。"
-        "供給安定性の総合スコア候補（将来）。"
+        "**🔗 素材横串ビュー** | 化合物マスタDB (469物質, CAS番号で正規化) から1つ選択すると、"
+        "7軸全部のデータが集約される。⭐がついた物質はピン留め（鉄板スコープ）、"
+        "残りは規制リスト・主要工業化学品由来の拡張スコープ。"
     )
 
-    options = [m["id"] for m in materials]
-    by_id = {m["id"]: m for m in materials}
-    selected_id = st.selectbox(
-        "素材を選択",
-        options,
-        format_func=lambda i: f"{by_id[i]['name_ja']} ({by_id[i]['name_en']}) — {by_id[i]['category']}",
-        key="cross_mat",
-    )
-    m = by_id[selected_id]
+    # Search + selection
+    col_search, col_cat = st.columns([2, 1])
+    with col_search:
+        query = st.text_input(
+            "🔍 物質名 / CAS番号で検索（部分一致）",
+            "",
+            placeholder="例: ethylene / 74-85-1 / フッ素 / SBR",
+            key="cross_search",
+        )
+    with col_cat:
+        categories_meta = cl.categories()
+        cat_options = ["（全カテゴリ）"] + [c["id"] for c in categories_meta]
+        cat_labels = {c["id"]: c["name_ja"] for c in categories_meta}
+        selected_cat = st.selectbox(
+            "カテゴリ絞り込み",
+            cat_options,
+            format_func=lambda c: c if c == "（全カテゴリ）" else f"{cat_labels.get(c, c)} ({c})",
+            key="cross_cat",
+        )
 
-    # Material metadata
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("カテゴリ", m["category"])
-    c2.metric("CAS番号", m["cas"] or "—")
-    c3.metric("HSコード", ", ".join(m["hs_codes"]) if m["hs_codes"] else "—")
-    c4.metric("WB商品コード", m["wb_commodity"] or "—")
+    filtered = chem_df.copy()
+    if selected_cat != "（全カテゴリ）":
+        filtered = filtered[filtered["category_norm"] == selected_cat]
+    if query.strip():
+        q = query.strip().lower()
+        mask = (
+            filtered["cas"].str.lower().str.contains(q, na=False)
+            | filtered["name_en"].str.lower().str.contains(q, na=False)
+            | filtered["iupac_name"].fillna("").str.lower().str.contains(q, na=False)
+            | filtered["top_synonym"].fillna("").str.lower().str.contains(q, na=False)
+        )
+        filtered = filtered[mask]
+
+    if filtered.empty:
+        st.warning(f"該当物質なし。検索を緩めるか、{pinned_count}件のピン留め物質に戻してください。")
+        return
+
+    st.caption(f"候補 {len(filtered)} 件（全 {len(chem_df)} 物質中、ピン留め ⭐ {pinned_count} 件）")
+
+    def fmt_row(cas: str) -> str:
+        r = filtered[filtered["cas"] == cas].iloc[0]
+        pin = "⭐ " if r["is_pinned"] else ""
+        nm = r["_display_name"] or cas
+        cat = r["category_label_ja"]
+        return f"{pin}{nm}　[{cas}]　— {cat}"
+
+    cas_options = filtered["cas"].tolist()
+    selected_cas = st.selectbox(
+        "物質を選択",
+        cas_options,
+        format_func=fmt_row,
+        key="cross_cas",
+    )
+
+    chem = cl.get_chemical(selected_cas)
+    if not chem:
+        st.error("物質詳細の取得に失敗")
+        return
+
+    # ---- Header metadata ----
+    pin_badge = "⭐ ピン留め" if chem["is_pinned"] else ""
+    st.markdown(f"## {chem['display_name']}　<small>{pin_badge}</small>", unsafe_allow_html=True)
+    if chem.get("pinned_note"):
+        st.caption(f"📌 {chem['pinned_note']}")
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("CAS番号", chem["cas"])
+    cat_labels = {c["id"]: c["name_ja"] for c in cl.categories()}
+    c2.metric("カテゴリ", cat_labels.get(chem.get("category_norm"), chem.get("category_norm") or "—"))
+    c3.metric("分子式", chem.get("molecular_formula") or "—")
+    mw = chem.get("molecular_weight")
+    c4.metric("分子量", f"{mw:.2f}" if mw and not pd.isna(mw) else "—")
+    pcid = chem.get("pubchem_cid")
+    if pcid and not pd.isna(pcid):
+        c5.markdown(f"**PubChem**  \n[CID {int(pcid)}](https://pubchem.ncbi.nlm.nih.gov/compound/{int(pcid)})")
+    else:
+        c5.metric("PubChem", "未取得")
+
+    # HS codes line
+    hs_exact = chem.get("hs6_exact") or []
+    hs_chs = chem.get("hs_chapters") or []
+    hs_text = ""
+    if hs_exact:
+        hs_text += f"**HS6 (確定)**: {', '.join(hs_exact)}　"
+    if hs_chs:
+        hs_text += f"**HSチャプター候補**: {', '.join(hs_chs)} （カテゴリ由来推定）"
+    if hs_text:
+        st.caption(hs_text)
 
     st.divider()
 
-    # === Axis 4: HHI snapshot per HS code ===
+    # === Axis 4: HHI snapshot per exact HS6 ===
     st.subheader("🌐 軸4 地政学・原産地 — 直近の輸出集中度")
     trade_p = latest_parquet(COMTRADE_DIR, "trade")
     reporters = load_reporters()
-    if trade_p and m["hs_codes"]:
+    if trade_p and hs_exact:
         con = duckdb.connect(":memory:")
         con.execute(f"CREATE VIEW trade AS SELECT * FROM '{trade_p}'")
-        cols = st.columns(min(len(m["hs_codes"]), 3))
-        for i, hs in enumerate(m["hs_codes"]):
+        cols = st.columns(min(len(hs_exact), 3))
+        for i, hs in enumerate(hs_exact):
             with cols[i % len(cols)]:
                 df = con.execute(
                     """SELECT reporterCode, primaryValue FROM trade
@@ -911,7 +985,7 @@ def render_cross():
                     [hs, hs],
                 ).df()
                 if df.empty:
-                    st.warning(f"HS {hs}: データなし")
+                    st.warning(f"HS {hs}: 軸4データ未ingest")
                     continue
                 total = df["primaryValue"].sum()
                 df["share"] = df["primaryValue"] / total * 100
@@ -921,8 +995,13 @@ def render_cross():
                 st.markdown(f"**HS {hs}** ({total/1e9:.2f}B USD輸出, {len(df)}国)")
                 st.metric("HHI", f"{hhi:,.0f}", help="<1500 低 / >2500 高集中")
                 st.metric("Top-1", f"{top1['share']:.1f}%", help=f"{top1_name}")
+    elif hs_chs:
+        st.info(
+            f"HS6 確定マッピングなし。カテゴリ由来のチャプター候補: {', '.join(hs_chs)}。"
+            "HS6 のマッピング精緻化は LLM 補助で別途予定。"
+        )
     else:
-        st.info("該当HSコードなし or 軸4データ未取得。")
+        st.info("HSコード未マッピング。")
 
     st.divider()
 
@@ -930,38 +1009,36 @@ def render_cross():
     st.subheader("📋 軸5 規制リスク — CAS番号での該当ヒット")
     svhc_p = latest_parquet(ECHA_DIR, "svhc")
     pops_p = latest_parquet(REG_DIR, "pops")
-    if m["cas"]:
-        hits_total = 0
-        if svhc_p:
-            con = duckdb.connect()
-            con.execute(f"CREATE VIEW svhc AS SELECT * FROM '{svhc_p}'")
-            hit = con.execute("SELECT substance_name, date_of_inclusion, reason FROM svhc WHERE cas_number = ?", [m["cas"]]).df()
-            if not hit.empty:
-                hits_total += len(hit)
-                st.error(f"🚨 ECHA SVHC: {len(hit)}件ヒット")
-                hit["date_of_inclusion"] = hit["date_of_inclusion"].astype(str).str[:10]
-                st.dataframe(hit, use_container_width=True, hide_index=True)
-        if pops_p:
-            pops = pd.read_parquet(pops_p)
-            phit = pops[pops["cas"] == m["cas"]]
-            if not phit.empty:
-                hits_total += len(phit)
-                st.error(f"🚨 Stockholm POPs: {len(phit)}件ヒット (Annex {phit.iloc[0]['annex']})")
-                st.dataframe(phit[["name_en", "annex", "type"]], use_container_width=True, hide_index=True)
-        if hits_total == 0:
-            st.success(f"✅ CAS {m['cas']} は現時点で規制リスト該当なし")
-    else:
-        st.info("CAS番号未登録（複数化合物等）。素材リファレンスでの個別CASマッピングが必要。")
+    hits_total = 0
+    if svhc_p:
+        con = duckdb.connect()
+        con.execute(f"CREATE VIEW svhc AS SELECT * FROM '{svhc_p}'")
+        hit = con.execute("SELECT substance_name, date_of_inclusion, reason FROM svhc WHERE cas_number = ?", [chem["cas"]]).df()
+        if not hit.empty:
+            hits_total += len(hit)
+            st.error(f"🚨 ECHA SVHC: {len(hit)}件ヒット")
+            hit["date_of_inclusion"] = hit["date_of_inclusion"].astype(str).str[:10]
+            st.dataframe(hit, use_container_width=True, hide_index=True)
+    if pops_p:
+        pops = pd.read_parquet(pops_p)
+        phit = pops[pops["cas"] == chem["cas"]]
+        if not phit.empty:
+            hits_total += len(phit)
+            st.error(f"🚨 Stockholm POPs: {len(phit)}件ヒット (Annex {phit.iloc[0]['annex']})")
+            st.dataframe(phit[["name_en", "annex", "type"]], use_container_width=True, hide_index=True)
+    if hits_total == 0:
+        st.success(f"✅ CAS {chem['cas']} は現時点で ECHA SVHC / Stockholm POPs に該当なし")
 
     st.divider()
 
-    # === Axis 6: related company 8-K ===
+    # === Axis 6: related company 8-K (only for pinned CAS with SEC tickers) ===
     st.subheader("💥 軸6 関連企業の供給途絶イベント (8-K)")
     sec_p = latest_parquet(SEC_DIR, "filings_8k")
-    if sec_p and m["sec_tickers"]:
+    if sec_p and chem.get("sec_tickers"):
         con = duckdb.connect()
         con.execute(f"CREATE VIEW sec AS SELECT * FROM '{sec_p}'")
-        placeholders = ",".join(["?"] * len(m["sec_tickers"]))
+        tickers = chem["sec_tickers"]
+        placeholders = ",".join(["?"] * len(tickers))
         df = con.execute(
             f"""SELECT filing_date, ticker, company_name, items, primary_desc, accession_url
                FROM sec
@@ -970,9 +1047,9 @@ def render_cross():
                       OR list_has(string_split(items, ','), '2.06')
                       OR list_has(string_split(items, ','), '1.02'))
                ORDER BY filing_date DESC LIMIT 20""",
-            m["sec_tickers"],
+            tickers,
         ).df()
-        st.caption(f"関連企業: {', '.join(m['sec_tickers'])}")
+        st.caption(f"関連企業: {', '.join(tickers)}")
         if df.empty:
             st.info("該当期間内に供給途絶系の臨時開示なし。")
         else:
@@ -981,20 +1058,24 @@ def render_cross():
             disp.columns = ["日付", "Ticker", "Items", "種別", "リンク"]
             st.dataframe(disp, use_container_width=True, hide_index=True)
     else:
-        st.info("関連企業（米化学）の紐付けなし。本素材はアジア/欧州企業中心の可能性。")
+        st.info(
+            "本物質の SEC ticker マッピングなし。"
+            "拡張スコープ物質の場合は materials_scope.yml に sec_tickers を追記するか、"
+            "アジア/欧州企業の Disclosure Feed の追加が必要。"
+        )
 
     st.divider()
 
     # === Axis 7: price chart ===
     st.subheader("💹 軸7 価格変動性")
     wb_p = latest_parquet(WB_DIR, "prices_monthly")
-    if wb_p and m["wb_commodity"]:
+    if wb_p and chem.get("wb_commodity"):
         con = duckdb.connect()
         con.execute(f"CREATE VIEW prices AS SELECT * FROM '{wb_p}'")
         cutoff = pd.Timestamp.now() - pd.DateOffset(years=10)
         df = con.execute(
             "SELECT date, price, unit, name FROM prices WHERE commodity = ? AND date >= ? ORDER BY date",
-            [m["wb_commodity"], cutoff],
+            [chem["wb_commodity"], cutoff],
         ).df()
         if df.empty:
             st.info("価格データなし")
@@ -1016,36 +1097,40 @@ def render_cross():
             fig.update_yaxes(title=unit)
             st.plotly_chart(styled_fig(fig, height=260), use_container_width=True)
     else:
-        st.info(f"World Bank Pink Sheet で直接の価格指標なし。{m['name_ja']}は原料連動価格になる可能性（原油: CRUDE_BRENT 等を参照）。")
+        st.info(
+            "World Bank Pink Sheet に直接の価格指標なし。"
+            "原料連動（原油 CRUDE_BRENT, ナフサ等）で代用、または別データソース（FRED, NYMEX）の追加が必要。"
+        )
 
     st.divider()
 
     # === Axis 1: capacity snippets ===
     st.subheader("🏭 軸1 生産能力・新増設 — 関連snippet")
     edinet_p = latest_parquet(EDINET_DIR, "capacity_snippets")
-    if edinet_p and m["capacity_keywords"]:
+    keywords = cl.synonyms_for_search(chem["cas"])
+    if edinet_p and keywords:
         con = duckdb.connect()
         con.execute(f"CREATE VIEW snip AS SELECT * FROM '{edinet_p}'")
-        like_clauses = " OR ".join(["snippet LIKE ?"] * len(m["capacity_keywords"]))
-        params = [f"%{k}%" for k in m["capacity_keywords"]]
+        like_clauses = " OR ".join(["snippet LIKE ?"] * len(keywords))
+        params = [f"%{k}%" for k in keywords]
         df = con.execute(
             f"""SELECT company, period, doctype, snippet
                 FROM snip WHERE {like_clauses}
                 ORDER BY period DESC LIMIT 15""",
             params,
         ).df()
-        st.caption(f"検索キーワード: {', '.join(m['capacity_keywords'])}")
+        st.caption(f"検索キーワード: {', '.join(keywords)}")
         if df.empty:
             st.info("該当snippetなし")
         else:
             for _, r in df.iterrows():
                 with st.expander(f"[{r['company']}] {r['period']} — {r['doctype']}"):
                     snippet = r["snippet"]
-                    for kw in m["capacity_keywords"]:
+                    for kw in keywords:
                         snippet = snippet.replace(kw, f"**{kw}**")
                     st.markdown(f"> {snippet}")
     else:
-        st.info("検索キーワード未設定")
+        st.info("検索キーワード生成不可（物質名なし）")
 
 
 # ---------- Top-level tabs ----------
@@ -1066,6 +1151,22 @@ with tab_overview:
         - 「🔗 素材横串」タブで個別物質の複数軸ビューを一括表示
         """
     )
+
+    # Chemicals registry summary
+    try:
+        chem_df_summary = cl.all_chemicals()
+        if not chem_df_summary.empty:
+            total_chem = len(chem_df_summary)
+            pinned_chem = int(chem_df_summary["is_pinned"].sum())
+            with_cid = int((chem_df_summary["pubchem_fetch_status"] == "ok").sum())
+            cats = chem_df_summary["category_norm"].nunique()
+            ov1, ov2, ov3, ov4 = st.columns(4)
+            ov1.metric("化合物マスタDB", f"{total_chem} 物質", help="CAS番号で正規化された全物質数")
+            ov2.metric("⭐ ピン留め", f"{pinned_chem}", help="鉄板スコープ（タイヤ・ゴム中心）")
+            ov3.metric("PubChem連携済", f"{with_cid}", help="PubChem CID取得 + 構造データあり")
+            ov4.metric("カテゴリ", f"{cats}", help="モノマー/ポリマー/溶剤/無機等の分類数")
+    except Exception:
+        pass
 
     st.subheader("7軸プロキシ指標")
     progress = []
