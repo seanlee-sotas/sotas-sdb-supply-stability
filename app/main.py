@@ -429,12 +429,12 @@ def render_axis7():
 
     years_back = st.slider("表示期間（年）", 1, 30, 10, key="ax7_years")
 
+    cutoff = pd.Timestamp.now() - pd.DateOffset(years=years_back)
     df = con.execute(
         """SELECT date, price, unit FROM prices
-           WHERE commodity = ?
-             AND date >= date_sub(current_date, INTERVAL ? YEAR)
+           WHERE commodity = ? AND date >= ?
            ORDER BY date""",
-        [selected, years_back],
+        [selected, cutoff],
     ).df()
 
     if df.empty:
