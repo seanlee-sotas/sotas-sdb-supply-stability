@@ -1,0 +1,45 @@
+# Expansion batch — HS6 codes beyond the original 22 in hs_codes.yml.
+# 20 codes × 2 flows × 5 years = 200 calls (under Free-tier 250/day limit).
+# Covers: major organic chemicals, common solvents, plasticizers, specialty polymers.
+
+hs_codes:
+  # Chapter 29 — Organic chemicals (extension)
+  - "290230"  # Toluene
+  - "290243"  # p-Xylene
+  - "290244"  # Xylene, mixed isomers
+  - "290511"  # Methanol
+  - "290532"  # Propylene glycol
+  - "290710"  # Phenol
+  - "290729"  # Polyphenols (incl bisphenol A)
+  - "291411"  # Acetone
+  - "291412"  # MEK (butan-2-one)
+  - "291532"  # Vinyl acetate
+  - "291735"  # Phthalic anhydride
+  - "292610"  # Acrylonitrile
+
+  # Chapter 28 — Inorganic (specialty)
+  - "280450"  # Boron, Silicon (semiconductor feedstock)
+
+  # Chapter 38 — Misc chemical products
+  - "381519"  # Catalysts, other
+
+  # Chapter 39 — Plastics (extension)
+  - "390730"  # Epoxy resins
+  - "390761"  # PET, high viscosity grade
+  - "392010"  # PE film
+
+  # Chapter 40 — Rubber (extension)
+  - "400221"  # IIR (isobutylene-isoprene rubber, butyl)
+  - "400249"  # Chloroprene rubber (CR), other forms
+  - "400270"  # EPDM
+
+flows:
+  - "X"
+  - "M"
+
+periods:
+  - "2024"
+  - "2023"
+  - "2022"
+  - "2021"
+  - "2020"

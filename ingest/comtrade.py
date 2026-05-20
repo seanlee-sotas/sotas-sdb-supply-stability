@@ -77,10 +77,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true", help="Fetch only the first period")
     parser.add_argument("--dry-run", action="store_true", help="Print plan, don't call API")
+    parser.add_argument("--config", default=None, help="Path to alternate hs_codes yaml (e.g. hs_codes_expand.yml)")
+    parser.add_argument("--suffix", default=None, help="Custom output filename suffix (e.g. 'expand')")
     args = parser.parse_args()
 
     key = load_key()
-    config = load_config()
+    config = (
+        yaml.safe_load(Path(args.config).read_text())
+        if args.config else load_config()
+    )
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     hs_codes = config["hs_codes"]
@@ -122,7 +127,12 @@ def main():
 
     df = pd.DataFrame(all_rows)
     stamp = datetime.now().strftime("%Y%m%d")
-    suffix = "_quick" if args.quick else ""
+    if args.suffix:
+        suffix = f"_{args.suffix}"
+    elif args.quick:
+        suffix = "_quick"
+    else:
+        suffix = ""
     out_path = DATA_DIR / f"trade_{stamp}{suffix}.parquet"
     df.to_parquet(out_path, index=False, compression="snappy")
     print(f"\nWrote {len(df)} rows to {out_path}")

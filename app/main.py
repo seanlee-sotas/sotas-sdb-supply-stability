@@ -1134,6 +1134,182 @@ def render_cross():
         st.info("検索キーワード生成不可（物質名なし）")
 
 
+# ---------- score tab — comparison sub-view ----------
+COMPARE_COLORS = ["#0F766E", "#7C3AED", "#DC2626", "#F59E0B"]
+COMPARE_FILL = ["rgba(15,118,110,0.18)", "rgba(124,58,237,0.18)", "rgba(220,38,38,0.18)", "rgba(245,158,11,0.18)"]
+
+
+def render_compare(cas_list: list[str], industry: str):
+    """Overlay radar chart + side-by-side score table for 2-4 chemicals."""
+    chems = [cl.get_chemical(c) for c in cas_list]
+    chems = [c for c in chems if c is not None]
+    if not chems:
+        st.error("物質詳細取得失敗")
+        return
+
+    # Compute scores per material
+    with st.spinner(f"{len(chems)}物質 × 7軸スコア計算中..."):
+        per_material = []
+        for chem in chems:
+            sub = scoring.compute_all(chem["cas"])
+            comp = scoring.composite(sub, industry=industry)
+            per_material.append({"chem": chem, "sub": sub, "comp": comp})
+
+    # --- Headline composite cards ---
+    cols = st.columns(len(per_material))
+    grade_colors = {"A": "#10B981", "B": "#22C55E", "C": "#F59E0B", "D": "#FB923C", "E": "#EF4444", "F": "#7F1D1D"}
+    for i, (col, m) in enumerate(zip(cols, per_material)):
+        with col:
+            name = m["chem"]["display_name"][:30]
+            border = COMPARE_COLORS[i % len(COMPARE_COLORS)]
+            if m["comp"]["composite"] is not None:
+                v = m["comp"]["composite"]
+                grade = m["comp"]["grade"]
+                gc = grade_colors.get(grade, MUTED)
+                st.markdown(
+                    f"<div style='padding:8px;border-radius:8px;background:{gc}10;border:2px solid {border};text-align:center;'>"
+                    f"<div style='font-size:11px;color:#334155;font-weight:600;'>{name}</div>"
+                    f"<div style='font-size:30px;font-weight:700;color:{gc};line-height:1.1;margin-top:4px;'>{v:.0f}</div>"
+                    f"<div style='font-size:18px;font-weight:600;color:{gc};line-height:1.0;'>{grade}</div>"
+                    f"<div style='font-size:10px;color:#64748B;margin-top:3px;'>{m['comp']['scored_axes']}/7 軸</div>"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f"<div style='padding:8px;border-radius:8px;background:#F1F5F9;border:2px dashed {border};text-align:center;'>"
+                    f"<div style='font-size:11px;color:#334155;font-weight:600;'>{name}</div>"
+                    f"<div style='font-size:18px;font-weight:600;color:{MUTED};margin-top:8px;'>データ不足</div>"
+                    f"<div style='font-size:10px;color:#64748B;margin-top:3px;'>{m['comp']['scored_axes']}/7 軸</div>"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+
+    st.divider()
+
+    # --- Overlaid radar chart ---
+    st.markdown("**7軸レーダー重ね描き** (外周=安定/100, 中心=リスク/0)")
+    axes_order = scoring.AXIS_KEYS
+    axis_labels = [scoring.AXIS_LABELS_JA[k] for k in axes_order]
+    theta = axis_labels + [axis_labels[0]]
+
+    fig = go.Figure()
+    # Background caution/danger reference rings
+    fig.add_trace(go.Scatterpolar(
+        r=[30] * (len(axes_order) + 1), theta=theta, mode="lines",
+        line=dict(color="#FCA5A5", width=1, dash="dot"),
+        hoverinfo="skip", showlegend=False,
+    ))
+    fig.add_trace(go.Scatterpolar(
+        r=[60] * (len(axes_order) + 1), theta=theta, mode="lines",
+        line=dict(color="#FDE68A", width=1, dash="dot"),
+        hoverinfo="skip", showlegend=False,
+    ))
+    for i, m in enumerate(per_material):
+        sub = m["sub"]
+        scores = [sub[k]["score"] if sub[k]["score"] is not None else 0 for k in axes_order]
+        r_actual = scores + [scores[0]]
+        color = COMPARE_COLORS[i % len(COMPARE_COLORS)]
+        fill = COMPARE_FILL[i % len(COMPARE_FILL)]
+        name = m["chem"]["display_name"][:25]
+        fig.add_trace(go.Scatterpolar(
+            r=r_actual, theta=theta, mode="lines+markers", fill="toself",
+            line=dict(color=color, width=2),
+            fillcolor=fill,
+            marker=dict(size=6, color=color),
+            name=name,
+            hovertemplate=f"<b>{name}</b><br>%{{theta}}<br>%{{r:.0f}}/100<extra></extra>",
+        ))
+    fig.update_layout(
+        template="plotly_white",
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 100], tickvals=[0, 30, 60, 100],
+                            gridcolor="#E2E8F0", tickfont=dict(size=10, color=MUTED)),
+            angularaxis=dict(tickfont=dict(size=11, color="#334155"), gridcolor="#E2E8F0"),
+            bgcolor="white",
+        ),
+        showlegend=True,
+        legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center"),
+        height=480,
+        margin=dict(l=60, r=60, t=20, b=80),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- Per-axis comparison table ---
+    st.markdown("**軸別スコア比較表**")
+    rows = []
+    for axis in axes_order:
+        row = {"軸": scoring.AXIS_LABELS_JA[axis].replace("軸", "").strip()[:18]}
+        # Find winner
+        scores_now = [(i, m["sub"][axis]["score"]) for i, m in enumerate(per_material)]
+        valid_scores = [(i, s) for i, s in scores_now if s is not None]
+        winner_idx = max(valid_scores, key=lambda x: x[1])[0] if valid_scores else None
+        for i, m in enumerate(per_material):
+            s = m["sub"][axis]["score"]
+            if s is None:
+                row[m["chem"]["display_name"][:15]] = "—"
+            else:
+                badge = " 👑" if i == winner_idx else ""
+                row[m["chem"]["display_name"][:15]] = f"{s:.0f}{badge}"
+        rows.append(row)
+    tdf = pd.DataFrame(rows)
+    st.dataframe(tdf, use_container_width=True, hide_index=True)
+    st.caption("👑 = 各軸での最高スコア（複数同点の場合は最左）")
+
+    # --- Aggregated narrative ---
+    st.divider()
+    st.markdown("### 📝 比較総評")
+    parts = []
+    # Best overall
+    composites = [(i, m["comp"]["composite"]) for i, m in enumerate(per_material) if m["comp"]["composite"] is not None]
+    if composites:
+        best_i, best_v = max(composites, key=lambda x: x[1])
+        worst_i, worst_v = min(composites, key=lambda x: x[1])
+        best_name = per_material[best_i]["chem"]["display_name"]
+        worst_name = per_material[worst_i]["chem"]["display_name"]
+        if best_i != worst_i:
+            parts.append(
+                f"総合スコア最高は **{best_name}** ({best_v:.0f}/100)、最低は **{worst_name}** ({worst_v:.0f}/100)、"
+                f"差分 {best_v - worst_v:.0f}点。"
+            )
+        else:
+            parts.append(f"評価可能な物質は **{best_name}** のみ、{best_v:.0f}/100。")
+
+    # Axis-level dispersion
+    high_dispersion_axes = []
+    for axis in axes_order:
+        valid = [m["sub"][axis]["score"] for m in per_material if m["sub"][axis]["score"] is not None]
+        if len(valid) >= 2:
+            spread = max(valid) - min(valid)
+            if spread >= 40:
+                high_dispersion_axes.append((axis, spread, max(valid), min(valid)))
+    if high_dispersion_axes:
+        high_dispersion_axes.sort(key=lambda x: -x[1])
+        spread_lines = [
+            f"- **{scoring.AXIS_LABELS_JA[a]}**: スコア差 {sp:.0f}点 (最高 {mx:.0f} / 最低 {mn:.0f})"
+            for a, sp, mx, mn in high_dispersion_axes[:3]
+        ]
+        parts.append("\n**🎯 物質間で差が大きい軸:**\n" + "\n".join(spread_lines))
+
+    # Industry-specific guidance
+    ind = cl.industries().get(industry) or cl.industries().get("default") or {}
+    ind_name = ind.get("name_ja", industry)
+    weights = ind.get("weights") or {}
+    top_weighted = sorted(weights.items(), key=lambda x: -x[1])[:2]
+    if top_weighted:
+        parts.append(
+            f"\n**📊 {ind_name}業界の重視軸:** "
+            + " / ".join(f"{scoring.AXIS_LABELS_JA[k]} ({v*100:.0f}%)" for k, v in top_weighted)
+            + " — この軸でのスコアが調達判断に最も効く"
+        )
+
+    if parts:
+        st.markdown("\n".join(parts))
+    else:
+        st.info("評価可能な物質が不足のため比較総評を生成できません。")
+    st.caption("🤖 ルールベース比較。LLM 文脈考慮型レビューは API 連携後の next step。")
+
+
 # ---------- score tab (composite + radar + narrative) ----------
 def render_score():
     chem_df = load_all_chemicals_df()
@@ -1204,6 +1380,32 @@ def render_score():
         return f"{pin}{nm}　[{cas}]　— {r['category_label_ja']}"
 
     cas_options = filtered["cas"].tolist()
+
+    # --- Comparison mode toggle ---
+    compare_mode = st.toggle(
+        "🔀 比較モード（2-4物質をレーダー重ね描き）",
+        value=False,
+        key="score_compare_toggle",
+        help="ONにすると複数物質を選んで横比較できる",
+    )
+
+    if compare_mode:
+        # Pre-select pinned items by default for fast demo
+        default_cas = [c for c in cas_options if filtered[filtered["cas"] == c].iloc[0]["is_pinned"]][:3]
+        selected_cas_list = st.multiselect(
+            "物質を選択（最大4件）",
+            cas_options,
+            default=default_cas,
+            format_func=fmt_row,
+            max_selections=4,
+            key="score_cas_multi",
+        )
+        if not selected_cas_list:
+            st.warning("物質を1件以上選択してください。")
+            return
+        render_compare(selected_cas_list, selected_industry)
+        return
+
     selected_cas = st.selectbox(
         "物質を選択",
         cas_options,
