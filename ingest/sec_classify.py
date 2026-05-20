@@ -100,13 +100,25 @@ def main():
     sec_p = max(sec_files)
     con = duckdb.connect()
     con.execute(f"CREATE VIEW sec AS SELECT * FROM '{sec_p}'")
+    # Resume support: skip already-classified accessions
+    existing = OUT_DIR.glob("item801_classified_*.parquet")
+    seen = set()
+    for f in existing:
+        prev = pd.read_parquet(f)
+        seen.update(prev["accession"].tolist())
+    print(f"Found {len(seen)} already-classified filings, will skip")
+
     df = con.execute(
         """SELECT filing_date, ticker, company_name, items, primary_desc, accession_url, accession
            FROM sec
            WHERE list_has(string_split(items, ','), '8.01')
-           ORDER BY filing_date DESC LIMIT 30"""
+              OR list_has(string_split(items, ','), '2.06')
+              OR list_has(string_split(items, ','), '1.02')
+              OR list_has(string_split(items, ','), '1.03')
+           ORDER BY filing_date DESC"""
     ).df()
-    print(f"Classifying {len(df)} Item 8.01 filings")
+    df = df[~df["accession"].isin(seen)].reset_index(drop=True)
+    print(f"Classifying {len(df)} new supply-relevant filings (items 8.01/2.06/1.02/1.03)")
 
     results = []
     for i, row in df.iterrows():
@@ -117,10 +129,14 @@ def main():
         time.sleep(0.5)  # gentle on both SEC and Anthropic
 
     df_out = pd.DataFrame(results)
+    # Merge with any existing classified files for this stamp (prevents overwrite loss)
     stamp = datetime.now().strftime("%Y%m%d")
     out_path = OUT_DIR / f"item801_classified_{stamp}.parquet"
+    if out_path.exists():
+        prev = pd.read_parquet(out_path)
+        df_out = pd.concat([prev, df_out], ignore_index=True).drop_duplicates(subset=["accession"], keep="last")
     df_out.to_parquet(out_path, index=False)
-    print(f"\nWrote {len(df_out)} classified rows to {out_path}")
+    print(f"\nWrote {len(df_out)} total classified rows to {out_path} (this run: {len(results)})")
     print("\nEvent type distribution:")
     print(df_out["event_type"].value_counts())
     print("\nSupply relevance distribution:")

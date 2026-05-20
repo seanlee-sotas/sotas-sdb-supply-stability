@@ -1,0 +1,7 @@
+{
+  "batch_id": "msgbatch_01UnSHP3yoH7vyY615HNAVG8",
+  "submitted_at": "2026-05-20T14:19:21.058370+00:00",
+  "snippet_count": 6650,
+  "source_parquet": "data/edinet/capacity_snippets_20260520.parquet",
+  "model": "claude-sonnet-4-6"
+}

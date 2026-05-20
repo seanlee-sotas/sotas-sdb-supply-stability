@@ -94,7 +94,7 @@ materials:
     hs_codes: ["400259"]
     wb_commodity: null
     sec_tickers: []
-    capacity_keywords: ["NBR", "ニトリルゴム", "ニトリル・ブタジエン"]
+    capacity_keywords: ["NBR", "ニトリルゴム", "ニトリル・ブタジエン", "アクリロニトリル"]
     category: 合成ゴム
 
   - id: carbon_black
@@ -134,7 +134,7 @@ materials:
     hs_codes: ["390120"]
     wb_commodity: null
     sec_tickers: ["DOW", "LYB", "EMN", "WLK"]
-    capacity_keywords: ["HDPE", "高密度ポリエチレン"]
+    capacity_keywords: ["HDPE", "高密度ポリエチレン", "ポリエチレン"]
     category: プラスチック
 
   - id: pp

@@ -41,11 +41,11 @@ SUPPLIER_DIR = ROOT / "data" / "supplier"
 
 AXES = [
     ("軸1", "生産能力・新増設", "EDINET MD（443社）から「生産能力」スニペット抽出", True),
-    ("軸2", "需給バランス", "石化協月次稼働率 / METI生産動態統計", False),
+    ("軸2", "需給バランス", "UN Comtradeから派生する日本の純輸出比率（proxy）", True),
     ("軸3", "サプライヤー集中度", "EDINETスニペット由来の素材別 JP上場サプライヤー数（proxy）", True),
     ("軸4", "地政学・原産地", "UN Comtrade年次貿易統計", True),
     ("軸5", "政策・規制リスク", "ECHA SVHC + METI特定重要物資 + Stockholm POPs", True),
-    ("軸6", "過去の供給途絶", "SEC EDGAR 8-K (米化学メジャー15社)", True),
+    ("軸6", "過去の供給途絶", "SEC EDGAR 8-K (米化学メジャー15社) + Claude LLM分類", True),
     ("軸7", "価格変動性", "World Bank Pink Sheet 月次商品価格 (1960–)", True),
 ]
 
@@ -625,6 +625,103 @@ def render_axis7():
     st.dataframe(latest, use_container_width=True, hide_index=True)
 
 
+# ---------- tab 2 ----------
+def render_axis2():
+    parquet = latest_parquet(COMTRADE_DIR, "trade")
+    if parquet is None:
+        st.error("`data/comtrade/trade_*.parquet` なし。")
+        return
+
+    st.info(
+        "**軸2「需給バランス」(proxy)** | "
+        "本格的な軸2は石化協月次稼働率/METI生産動態統計が必要だが、proxyとして "
+        "**UN Comtradeの日本側貿易フロー** から「純輸出比率」(=(輸出-輸入)/総貿易額) を計算。"
+        "+1に近い=日本が完全に輸出超過(国内供給過剰)、-1に近い=完全に輸入依存。"
+        "時系列変化が需給逼迫/緩和の早期警報になる。"
+    )
+
+    hs_desc = load_hs_desc()
+    con = duckdb.connect(":memory:")
+    con.execute(f"CREATE VIEW trade AS SELECT * FROM '{parquet}'")
+
+    # All HS codes with both X and M flows for Japan
+    df_all = con.execute("""
+        SELECT
+          cmdCode, period,
+          SUM(CASE WHEN flowCode='X' THEN primaryValue ELSE 0 END) AS exports,
+          SUM(CASE WHEN flowCode='M' THEN primaryValue ELSE 0 END) AS imports,
+          (SUM(CASE WHEN flowCode='X' THEN primaryValue ELSE 0 END)
+           - SUM(CASE WHEN flowCode='M' THEN primaryValue ELSE 0 END))
+           / NULLIF(SUM(primaryValue), 0) AS net_export_ratio
+        FROM trade
+        WHERE reporterCode = 392 AND partner2Code = 0 AND primaryValue > 0
+        GROUP BY cmdCode, period
+        HAVING SUM(primaryValue) > 0
+    """).df()
+
+    if df_all.empty:
+        st.warning("日本の貿易データなし。")
+        return
+
+    st.caption(f"データ: `{parquet.name}` | 日本 (M49=392) 視点")
+
+    # Latest period snapshot
+    latest_period = df_all["period"].max()
+    latest = df_all[df_all["period"] == latest_period].copy()
+    latest["material"] = latest["cmdCode"].map(lambda c: f"{c} — {hs_desc.get(c, '?')[:30]}")
+    latest = latest.sort_values("net_export_ratio")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("対象期間", latest_period)
+    c2.metric("対象HS数", len(latest))
+    importer = (latest["net_export_ratio"] < 0).sum()
+    c3.metric("輸入超過HS", importer, help="日本が純輸入国の素材数（軸2リスク高）")
+
+    st.subheader(f"{latest_period}年 — HS別 純輸出比率（日本視点）")
+    fig = px.bar(
+        latest, x="net_export_ratio", y="material", orientation="h",
+        color="net_export_ratio",
+        color_continuous_scale=[(0, DANGER), (0.5, "#F59E0B"), (1, "#10B981")],
+        range_color=[-1, 1],
+        labels={"net_export_ratio": "純輸出比率 (-1=輸入依存, +1=輸出超過)", "material": ""},
+    )
+    fig.add_vline(x=0, line_dash="dash", line_color=MUTED)
+    fig.update_layout(coloraxis_showscale=False, showlegend=False)
+    st.plotly_chart(styled_fig(fig, height=500), use_container_width=True)
+
+    # Time series for a selected HS
+    st.subheader("HS別 純輸出比率の年次推移")
+    hs_options = sorted(df_all["cmdCode"].unique())
+    selected_hs = st.selectbox(
+        "HS6コード", hs_options,
+        format_func=lambda c: f"{c} — {hs_desc.get(c, '?')[:60]}",
+        key="ax2_hs",
+    )
+    trend = df_all[df_all["cmdCode"] == selected_hs].sort_values("period")
+    if not trend.empty:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=trend["period"], y=trend["net_export_ratio"],
+            mode="lines+markers", line=dict(color=ACCENT, width=3), marker=dict(size=10),
+            hovertemplate="<b>%{x}</b><br>純輸出比率: %{y:.2f}<extra></extra>",
+        ))
+        fig.add_hline(y=0, line_color=MUTED, line_dash="dash", annotation_text="均衡 (0)")
+        fig.update_yaxes(range=[-1, 1], title="純輸出比率")
+        fig.update_xaxes(title="期間")
+        st.plotly_chart(styled_fig(fig, height=300), use_container_width=True)
+
+        # Show raw numbers
+        with st.expander("生数値"):
+            disp = trend[["period", "exports", "imports", "net_export_ratio"]].copy()
+            disp["exports"] = disp["exports"].map(lambda v: f"${v/1e6:,.1f}M")
+            disp["imports"] = disp["imports"].map(lambda v: f"${v/1e6:,.1f}M")
+            disp["net_export_ratio"] = disp["net_export_ratio"].map(lambda v: f"{v:+.3f}")
+            disp.columns = ["期間", "輸出", "輸入", "純輸出比率"]
+            st.dataframe(disp, use_container_width=True, hide_index=True)
+
+    st.caption("📝 注: これは「日本の貿易フロー」由来のproxy。本格的な需給バランス（稼働率・在庫水準）は別途METI/JPCAデータ整備で精緻化予定。")
+
+
 # ---------- tab 3 ----------
 def render_axis3():
     p = latest_parquet(SUPPLIER_DIR, "jp_supplier_count")
@@ -891,8 +988,8 @@ def render_cross():
 
 
 # ---------- Top-level tabs ----------
-tab_overview, tab_cross, tab1, tab3, tab4, tab5, tab6, tab7, tab_other = st.tabs(
-    ["🏠 Overview", "🔗 素材横串", "🏭 軸1 生産能力", "🤝 軸3 サプライヤー集中", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "💹 軸7 価格変動性", "🚧 他軸 (実装待ち)"]
+tab_overview, tab_cross, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+    ["🏠 Overview", "🔗 素材横串", "🏭 軸1 生産能力", "⚖️ 軸2 需給バランス", "🤝 軸3 サプライヤー集中", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "💹 軸7 価格変動性"]
 )
 
 with tab_overview:
@@ -922,6 +1019,9 @@ with tab_cross:
 with tab1:
     render_axis1()
 
+with tab2:
+    render_axis2()
+
 with tab3:
     render_axis3()
 
@@ -936,14 +1036,3 @@ with tab6:
 
 with tab7:
     render_axis7()
-
-with tab_other:
-    st.markdown(
-        """
-        ### 未実装の軸
-
-        - **軸2 需給バランス** — 石油化学工業協会の月次エチレン稼働率PDF + METI化学工業生産動態統計（月次品目別生産量）。次フェーズで METI e-Stat API か JPCA PDF スクレイピングで実装
-
-        7軸中6軸 (1/3/4/5/6/7) は実装済。各タブから詳細確認可能。
-        """
-    )
