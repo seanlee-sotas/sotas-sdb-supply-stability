@@ -11,9 +11,10 @@ COMTRADE_DIR = ROOT / "data" / "comtrade"
 ECHA_DIR = ROOT / "data" / "echa"
 REG_DIR = ROOT / "data" / "regulations"
 SEC_DIR = ROOT / "data" / "sec"
+EDINET_DIR = ROOT / "data" / "edinet"
 
 AXES = [
-    ("軸1", "生産能力・新増設", "EDINET XBRLから有報「生産能力」表抽出", False),
+    ("軸1", "生産能力・新増設", "EDINET MD（443社）から「生産能力」スニペット抽出", True),
     ("軸2", "需給バランス", "石化協月次稼働率 / METI生産動態統計", False),
     ("軸3", "サプライヤー集中度", "EDINET主要販売先 + 業界団体加盟社能力", False),
     ("軸4", "地政学・原産地", "UN Comtrade年次貿易統計", True),
@@ -343,9 +344,60 @@ def render_axis6():
             st.dataframe(disp, use_container_width=True, hide_index=True)
 
 
+# ---------- tab 1 ----------
+def render_axis1():
+    p = latest_parquet(EDINET_DIR, "capacity_snippets")
+
+    st.info(
+        "**軸1「生産能力・新増設」** | "
+        "化学系443社の有報・統合報告書・中期経営計画から「生産能力」「年産」「設備能力」等のキーワード周辺テキストを抽出。"
+        "現在は**スニペット索引**段階。構造化（製品×工場×年間能力 表化）はLLM抽出を別ステップで予定。"
+    )
+    if p is None:
+        st.error("`data/edinet/capacity_snippets_*.parquet` なし。`uv run python ingest/edinet_capacity.py` 実行。")
+        return
+
+    con = duckdb.connect(":memory:")
+    con.execute(f"CREATE VIEW snip AS SELECT * FROM '{p}'")
+    total = con.execute("SELECT COUNT(*) FROM snip").fetchone()[0]
+    companies = con.execute("SELECT COUNT(DISTINCT company) FROM snip").fetchone()[0]
+    doctypes = con.execute("SELECT COUNT(DISTINCT doctype) FROM snip").fetchone()[0]
+    st.caption(f"データ: `{p.name}` ({total:,} snippets, {companies} companies, {doctypes} doctypes)")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("スニペット総数", f"{total:,}")
+    c2.metric("企業数（言及あり）", companies)
+    c3.metric("文書種類", doctypes)
+
+    st.markdown("**文書種別の内訳**")
+    dt = con.execute("SELECT doctype, COUNT(*) AS cnt FROM snip GROUP BY doctype ORDER BY cnt DESC").df()
+    st.bar_chart(dt.set_index("doctype")["cnt"], height=240)
+
+    st.markdown("**スニペット数 Top 20 企業（生産能力に関する記述が多い ＝ 投資・再編が活発）**")
+    top_co = con.execute("SELECT company, COUNT(*) AS cnt FROM snip GROUP BY company ORDER BY cnt DESC LIMIT 20").df()
+    st.bar_chart(top_co.set_index("company")["cnt"], height=320)
+
+    st.divider()
+    st.markdown("**スニペット閲覧**")
+    co_list = con.execute("SELECT DISTINCT company FROM snip ORDER BY company").df()["company"].tolist()
+    chosen = st.selectbox("企業", co_list, key="ax1_co")
+    snips = con.execute(
+        """SELECT period, doctype, snippet, file_path FROM snip WHERE company = ?
+           ORDER BY period DESC, doctype""",
+        [chosen],
+    ).df()
+    if snips.empty:
+        st.info("該当データなし")
+    else:
+        for _, r in snips.iterrows():
+            with st.expander(f"[{r['period']}] {r['doctype']} — {r['snippet'][:80]}..."):
+                st.markdown(f"> {r['snippet']}")
+                st.caption(f"出典: `{r['file_path']}`")
+
+
 # ---------- Top-level tabs ----------
-tab_overview, tab4, tab5, tab6, tab_other = st.tabs(
-    ["🏠 Overview", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "🚧 他軸 (実装待ち)"]
+tab_overview, tab1, tab4, tab5, tab6, tab_other = st.tabs(
+    ["🏠 Overview", "🏭 軸1 生産能力", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "🚧 他軸 (実装待ち)"]
 )
 
 with tab_overview:
@@ -369,6 +421,9 @@ with tab_overview:
     st.dataframe(pd.DataFrame(progress), use_container_width=True, hide_index=True)
     st.caption("各軸の詳細は上のタブから。新しい軸が ingest 完了次第、順次タブを追加していく。")
 
+with tab1:
+    render_axis1()
+
 with tab4:
     render_axis4()
 
@@ -383,7 +438,6 @@ with tab_other:
         """
         ### 未実装の軸
 
-        - **軸1 生産能力・新増設** — EDINET API（既に443社XBRL取得済 via `/research-company-jp` skill）から有報「生産能力」セクション抽出
         - **軸2 需給バランス** — 石油化学工業協会の月次エチレン稼働率PDF + METI化学工業生産動態統計（月次品目別生産量）
         - **軸3 サプライヤー集中度** — EDINET主要販売先 + 業界団体加盟社別能力データを統合してHHI算出
         - **軸7 価格変動性** — vault `3. RSS/化学工業日報` 市況欄からLLM抽出 + METI基準ナフサ価格
