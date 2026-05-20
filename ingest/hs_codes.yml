@@ -1,27 +1,38 @@
-# Initial scope for SDB supply-stability MVP.
-# Rubber-adjacent monomers + key polymers (Sumitomo Rubber 梶山 use case).
-# Expand chapters 28/32/38 after pipeline validation.
+# SDB supply-stability scope.
+# Rubber/tire-adjacent monomers, polymers, fillers, additives (Sumitomo Rubber use case).
 
 hs_codes:
+  # Chapter 28 — Inorganic chemicals (rubber fillers)
+  - "280300"  # Carbon black (major reinforcing filler)
+  - "281122"  # Silicon dioxide / silica (major reinforcing filler)
+
   # Chapter 29 — Organic chemicals (monomers)
   - "290121"  # Ethylene
   - "290122"  # Propylene
   - "290124"  # Buta-1,3-diene + isoprene
   - "290250"  # Styrene
 
+  # Chapter 38 — Misc chemicals (rubber additives)
+  - "381210"  # Rubber accelerators, prepared
+  - "381231"  # Anti-oxidising preparations (TMQ-based)
+  - "381239"  # Anti-oxidising preparations, other
+
   # Chapter 39 — Plastics
-  - "390110"  # Polyethylene, density < 0.94
-  - "390120"  # Polyethylene, density >= 0.94
+  - "390110"  # Polyethylene, density < 0.94 (LDPE)
+  - "390120"  # Polyethylene, density >= 0.94 (HDPE)
   - "390210"  # Polypropylene
   - "390319"  # Polystyrene, other
+  - "390410"  # Polyvinyl chloride (PVC)
+  - "391000"  # Silicones, primary forms
 
   # Chapter 40 — Rubber
   - "400110"  # Natural rubber latex
   - "400122"  # TSR (technically specified natural rubber)
-  - "400211"  # Styrene-butadiene rubber, latex
-  - "400219"  # SBR, other
+  - "400211"  # SBR / XSBR latex
+  - "400219"  # SBR / XSBR, other
   - "400220"  # Butadiene rubber (BR)
   - "400259"  # NBR, other
+  - "400510"  # Rubber unvulcanised, compounded with carbon black or silica (masterbatch)
 
 flows:
   - "X"  # exports
