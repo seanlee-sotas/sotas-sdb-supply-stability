@@ -40,13 +40,28 @@ WB_DIR = ROOT / "data" / "worldbank"
 SUPPLIER_DIR = ROOT / "data" / "supplier"
 
 AXES = [
-    ("軸1", "生産能力・新増設", "EDINET MD（443社）から「生産能力」スニペット抽出", True),
-    ("軸2", "需給バランス", "UN Comtradeから派生する日本の純輸出比率（proxy）", True),
-    ("軸3", "サプライヤー集中度", "EDINETスニペット由来の素材別 JP上場サプライヤー数（proxy）", True),
-    ("軸4", "地政学・原産地", "UN Comtrade年次貿易統計", True),
-    ("軸5", "政策・規制リスク", "ECHA SVHC + METI特定重要物資 + Stockholm POPs", True),
-    ("軸6", "過去の供給途絶", "SEC EDGAR 8-K (米化学メジャー15社) + Claude LLM分類", True),
-    ("軸7", "価格変動性", "World Bank Pink Sheet 月次商品価格 (1960–)", True),
+    # (code, name, proxy_indicator, data_source)
+    ("軸1", "生産能力・新増設",
+     "新増設・能力変動の方向（new/expand/reduce/maintain）と件数",
+     "EDINET 有報・統合報告書・中計テキスト"),
+    ("軸2", "需給バランス",
+     "日本の純輸出比率 (輸出−輸入)/総貿易額  ＋1=供給過剰 / −1=輸入依存",
+     "UN Comtrade 年次貿易統計"),
+    ("軸3", "サプライヤー集中度",
+     "JP上場サプライヤー社数（3バンド：≤3/4-10/11+）",
+     "EDINET テキスト由来の言及社数"),
+    ("軸4", "地政学・原産地",
+     "輸出国HHI / Top-1単一国依存度 / Top-3シェア",
+     "UN Comtrade 年次貿易統計"),
+    ("軸5", "政策・規制リスク",
+     "規制リスト該当数 ＋ 直近収載日（早期警報）",
+     "ECHA SVHC ・ Stockholm POPs ・ METI 特定重要物資"),
+    ("軸6", "過去の供給途絶",
+     "供給関連イベント頻度（LLM分類で FM/事故/停止 を抽出）",
+     "SEC EDGAR 8-K ＋ Claude 分類"),
+    ("軸7", "価格変動性",
+     "12ヶ月 年率ボラティリティ ＋ YoY 変化率",
+     "World Bank Pink Sheet 月次商品価格"),
 ]
 
 st.set_page_config(page_title="SDB 供給安定性", layout="wide")
@@ -97,15 +112,15 @@ div[data-baseweb="select"] svg {
 """, unsafe_allow_html=True)
 
 st.title("SDB 供給安定性 dashboard")
-st.caption("[`202605_sdb-supply-stability`](https://github.com/seanlee-sotas/sotas-sdb-supply-stability) | 7要素プロキシ指標による素材別供給リスクの可視化")
+st.caption("7要素プロキシ指標による素材別供給リスクの可視化")
 
 with st.sidebar:
-    st.subheader("プロジェクト7軸ロードマップ")
-    for code, name, source, active in AXES:
-        icon = "✅" if active else "🚧"
-        st.markdown(f"{icon} **{code}** {name}  \n　<small>{source}</small>", unsafe_allow_html=True)
-    st.divider()
-    st.caption("詳細: `Projects/202605_sdb-supply-stability/` (Vault)")
+    st.subheader("7軸プロキシ指標")
+    for code, name, proxy, source in AXES:
+        st.markdown(
+            f"**{code}** {name}  \n　<small>{proxy}</small>",
+            unsafe_allow_html=True,
+        )
 
 
 # ---------- shared loaders ----------
@@ -1042,22 +1057,27 @@ with tab_overview:
     st.subheader("プロジェクト全体像")
     st.markdown(
         """
-        住友ゴム梶山さんからの要望「SDBで素材ごとの**供給安定性**を見たい」を起点に、
-        供給安定性を**7要素**に分解し、各要素を公開ソース由来のプロキシ指標で機械算出する基盤を構築。
+        化学品の購買・R&D担当者が素材検索時に直感的に**供給リスク**を把握できることを目指す。
 
-        - **データ収集**: 各軸ごとに ingest スクリプトを `ingest/` に配置、Parquet/JSONで `data/` 配下に蓄積
-        - **可視化**: Streamlit + DuckDB でリアルタイムクエリ。データはGit-committedで再現性確保
-        - **配信**: Streamlit Cloud で社内メンバーに URL 共有（リモート前提・自前インフラ不要）
-        - **ソース**: GitHub private [`sotas-sdb-supply-stability`](https://github.com/seanlee-sotas/sotas-sdb-supply-stability)
+        供給安定性は単一の指標ではなく、**生産能力 / 需給バランス / サプライヤー集中度 / 地政学 / 規制 / 過去事象 / 価格変動** の 7 要素で構成されると整理し、
+        各要素について公開データ由来のプロキシ指標を機械算出してダッシュボード化した。
+
+        - 各軸の単独タブで詳細を確認
+        - 「🔗 素材横串」タブで個別物質の複数軸ビューを一括表示
         """
     )
 
-    st.subheader("実装進捗")
+    st.subheader("7軸プロキシ指標")
     progress = []
-    for code, name, source, active in AXES:
-        progress.append({"軸": code, "要素": name, "状態": "✅ 実装済" if active else "🚧 未着手", "データソース": source})
+    for code, name, proxy, source in AXES:
+        progress.append({
+            "軸": code,
+            "要素": name,
+            "プロキシ指標": proxy,
+            "データソース": source,
+        })
     st.dataframe(pd.DataFrame(progress), use_container_width=True, hide_index=True)
-    st.caption("各軸の詳細は上のタブから。新しい軸が ingest 完了次第、順次タブを追加していく。")
+    st.caption("各軸の詳細は上のタブから。")
 
 with tab_cross:
     render_cross()
