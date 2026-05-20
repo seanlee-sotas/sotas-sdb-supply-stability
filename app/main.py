@@ -50,6 +50,52 @@ AXES = [
 ]
 
 st.set_page_config(page_title="SDB 供給安定性", layout="wide")
+
+# Custom CSS: make form inputs more obviously interactive
+st.markdown("""
+<style>
+/* Selectbox: visible border + hover state + chevron clarity */
+div[data-baseweb="select"] > div {
+    background-color: #FFFFFF !important;
+    border: 1px solid #94A3B8 !important;
+    border-radius: 6px !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+div[data-baseweb="select"] > div:hover {
+    border-color: #0F766E !important;
+    box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.15);
+    cursor: pointer;
+}
+div[data-baseweb="select"] svg {
+    color: #475569 !important;
+}
+/* Text input + textarea */
+.stTextInput input, .stTextArea textarea, .stNumberInput input {
+    background-color: #FFFFFF !important;
+    border: 1px solid #94A3B8 !important;
+    border-radius: 6px !important;
+}
+.stTextInput input:focus, .stTextArea textarea:focus {
+    border-color: #0F766E !important;
+    box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.15);
+}
+/* Slider: handle visibility */
+.stSlider [data-baseweb="slider"] [role="slider"] {
+    border: 2px solid #0F766E !important;
+}
+/* Tab indicator: more prominent active state */
+.stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+    color: #0F766E !important;
+    font-weight: 600 !important;
+}
+/* Labels above inputs: tiny weight bump so the form structure reads */
+.stSelectbox label, .stTextInput label, .stSlider label {
+    font-weight: 500 !important;
+    color: #334155 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("SDB 供給安定性 dashboard")
 st.caption("[`202605_sdb-supply-stability`](https://github.com/seanlee-sotas/sotas-sdb-supply-stability) | 7要素プロキシ指標による素材別供給リスクの可視化")
 
