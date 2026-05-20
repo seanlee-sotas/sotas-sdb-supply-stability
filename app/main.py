@@ -397,6 +397,54 @@ def render_axis6():
         disp.columns = ["日付", "Ticker", "企業名", "Items", "種別", "リンク"]
         st.dataframe(disp, use_container_width=True, hide_index=True)
 
+    # LLM-classified subset
+    classified_p = latest_parquet(SEC_DIR, "item801_classified")
+    if classified_p is not None:
+        st.divider()
+        st.subheader("🤖 LLM分類 — Item 8.01 直近30件の詳細イベント分類")
+        st.caption("Claude Sonnet 4.6で各filingの本文を読み、event_type / supply_relevance を構造化")
+        cls_df = pd.read_parquet(classified_p)
+        # Event type breakdown
+        col_evt, col_sup = st.columns(2)
+        with col_evt:
+            st.markdown("**Event type 内訳**")
+            evt_count = cls_df["event_type"].value_counts()
+            fig = px.bar(
+                x=evt_count.values, y=evt_count.index, orientation="h",
+                color_discrete_sequence=[ACCENT],
+                labels={"x": "件数", "y": ""},
+            )
+            fig.update_yaxes(categoryorder="total ascending")
+            st.plotly_chart(styled_fig(fig, height=280), use_container_width=True)
+        with col_sup:
+            st.markdown("**Supply relevance 内訳**")
+            sup_count = cls_df["supply_relevance"].value_counts()
+            colors = {"HIGH": DANGER, "MED": "#F59E0B", "LOW": "#10B981"}
+            fig = px.pie(
+                values=sup_count.values, names=sup_count.index,
+                color=sup_count.index, color_discrete_map=colors, hole=0.4,
+            )
+            fig.update_traces(textinfo="label+value")
+            st.plotly_chart(styled_fig(fig, height=280), use_container_width=True)
+
+        st.markdown("**HIGH 供給関連イベントのみ抽出**")
+        high = cls_df[cls_df["supply_relevance"] == "HIGH"].sort_values("filing_date", ascending=False)
+        if high.empty:
+            st.success("直近30件にHIGH供給関連イベントなし")
+        else:
+            high_disp = high[["filing_date", "ticker", "event_type", "summary_ja", "key_facility", "key_product", "accession_url"]].copy()
+            high_disp["link"] = high_disp["accession_url"].map(lambda u: f"[開示]({u})")
+            high_disp = high_disp.drop(columns=["accession_url"])
+            high_disp.columns = ["日付", "Ticker", "Event Type", "要約 (LLM生成)", "施設", "製品", "リンク"]
+            st.dataframe(high_disp, use_container_width=True, hide_index=True)
+
+        with st.expander("全分類結果"):
+            full = cls_df[["filing_date", "ticker", "event_type", "supply_relevance", "summary_ja", "accession_url"]].copy()
+            full["link"] = full["accession_url"].map(lambda u: f"[開示]({u})")
+            full = full.drop(columns=["accession_url"])
+            full.columns = ["日付", "Ticker", "Event Type", "影響度", "要約", "リンク"]
+            st.dataframe(full, use_container_width=True, hide_index=True)
+
     with st.expander("Item 2.06 (Material Impairments) 全件"):
         item_206 = con.execute("""
             SELECT filing_date, ticker, company_name, items, primary_desc, accession_url
