@@ -15,6 +15,7 @@ import chemicals_loader as cl  # noqa: E402
 import scoring  # noqa: E402
 import scoring_llm  # noqa: E402
 import gemini_client as gemini  # noqa: E402 (avoid stdlib `gc` collision)
+import source_inspector  # noqa: E402
 
 ACCENT = "#0F766E"
 ACCENT_LIGHT = "#5EEAD4"
@@ -270,6 +271,9 @@ def render_axis4():
     else:
         st.info("現データは1期のみ。`uv run python ingest/comtrade.py` で全期間ingest。")
 
+    st.divider()
+    source_inspector.render_source("comtrade_trade", parquet)
+
 
 # ---------- tab 5 ----------
 def render_axis5():
@@ -393,6 +397,12 @@ def render_axis5():
                     st.markdown(f"- **{src}**: {name}  \n  　{detail}")
             else:
                 st.info(f"CAS {cas} は現在ingest済の規制リストには該当なし。")
+
+    st.divider()
+    st.markdown("### 📂 ソース生データ — 軸5 規制リスク")
+    source_inspector.render_source("echa_svhc", svhc_p)
+    source_inspector.render_source("meti_critical", meti_p)
+    source_inspector.render_source("pops", pops_p)
 
 
 # ---------- tab 6 ----------
@@ -526,6 +536,11 @@ def render_axis6():
             disp.columns = ["日付", "Ticker", "企業名", "種別", "リンク"]
             st.dataframe(disp, use_container_width=True, hide_index=True)
 
+    st.divider()
+    st.markdown("### 📂 ソース生データ — 軸6 過去の供給途絶")
+    source_inspector.render_source("sec_8k", sec_p)
+    source_inspector.render_source("sec_item801", classified_p)
+
 
 # ---------- tab 1 ----------
 def render_axis1():
@@ -576,6 +591,12 @@ def render_axis1():
             with st.expander(f"[{r['period']}] {r['doctype']} — {r['snippet'][:80]}..."):
                 st.markdown(f"> {r['snippet']}")
                 st.caption(f"出典: `{r['file_path']}`")
+
+    st.divider()
+    st.markdown("### 📂 ソース生データ — 軸1 生産能力・新増設")
+    source_inspector.render_source("edinet_snippets", p)
+    structured_p = latest_parquet(EDINET_DIR, "capacity_structured")
+    source_inspector.render_source("edinet_structured", structured_p)
 
 
 # ---------- tab 7 ----------
@@ -692,6 +713,9 @@ def render_axis7():
     latest.columns = ["商品", "コード", "直近月", "価格", "YoY"]
     st.dataframe(latest, use_container_width=True, hide_index=True)
 
+    st.divider()
+    source_inspector.render_source("wb_prices", p)
+
 
 # ---------- tab 2 ----------
 def render_axis2():
@@ -789,6 +813,9 @@ def render_axis2():
 
     st.caption("📝 注: これは「日本の貿易フロー」由来のproxy。本格的な需給バランス（稼働率・在庫水準）は別途METI/JPCAデータ整備で精緻化予定。")
 
+    st.divider()
+    source_inspector.render_source("comtrade_trade", parquet)
+
 
 # ---------- tab 3 ----------
 def render_axis3():
@@ -858,6 +885,9 @@ def render_axis3():
         disp = disp[["name_ja", "name_en", "category", "jp_supplier_count", "band_label", "top_companies"]]
         disp.columns = ["素材", "英名", "カテゴリ", "サプライヤー数", "集中度バンド", "Top企業"]
         st.dataframe(disp, use_container_width=True, hide_index=True)
+
+    st.divider()
+    source_inspector.render_source("jp_supplier", p)
 
 
 # ---------- cross-axis tab (chemicals.parquet-driven) ----------
@@ -1134,6 +1164,21 @@ def render_cross():
                     st.markdown(f"> {snippet}")
     else:
         st.info("検索キーワード生成不可（物質名なし）")
+
+    st.divider()
+    st.markdown("### 📂 ソース生データ（本物質に紐づく全データセット）")
+    st.caption(
+        "下記の expander を開くと、原典 parquet のカラム定義・プレビュー・CSV ダウンロードができます。"
+        "本物質に絞り込まれたビューではなく、各データセットの全体像です。"
+    )
+    source_inspector.render_source("chemicals_master", cl.CHEM_P)
+    source_inspector.render_source("chemicals_hs_map", cl.HS_MAP_P)
+    source_inspector.render_source("comtrade_trade", trade_p)
+    source_inspector.render_source("echa_svhc", svhc_p)
+    source_inspector.render_source("pops", pops_p)
+    source_inspector.render_source("sec_8k", sec_p)
+    source_inspector.render_source("wb_prices", wb_p)
+    source_inspector.render_source("edinet_snippets", edinet_p)
 
 
 # ---------- score tab — comparison sub-view ----------
