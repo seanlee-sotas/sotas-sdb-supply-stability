@@ -1220,7 +1220,55 @@ def render_axis2():
     st.caption("📝 注: これは「日本の貿易フロー」由来のproxy。本格的な需給バランス（稼働率・在庫水準）は別途METI/JPCAデータ整備で精緻化予定。")
 
     st.divider()
+    st.subheader("🏭 JPCA 月次生産実績 (1999年〜)")
+    jpca_p = latest_parquet(ROOT / "data" / "jpca", "jpca_monthly")
+    if jpca_p is None:
+        st.info("JPCA 月次データ未取得。`uv run python ingest/jpca_monthly.py` 実行。")
+    else:
+        jdf = pd.read_parquet(jpca_p)
+        st.caption(f"`{jpca_p.name}` — {len(jdf):,} rows, {jdf['cas'].nunique()} CAS, {jdf['period'].min()}〜{jdf['period'].max()}")
+        # CAS picker (only CAS in JPCA)
+        cas_options = sorted(jdf["cas"].dropna().unique().tolist())
+        chem_map = cl.all_chemicals().set_index("cas")["_display_name"].to_dict()
+        pick = st.selectbox(
+            "物質",
+            cas_options,
+            format_func=lambda c: f"{c} — {chem_map.get(c, '?')}",
+            key="jpca_cas",
+        )
+        sub = jdf[jdf["cas"] == pick].sort_values("period")
+        if len(sub) == 0:
+            st.warning("該当データなし")
+        else:
+            # Time-series plot
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=sub["period"], y=sub["value"],
+                mode="lines+markers",
+                line=dict(color=ACCENT, width=2),
+                marker=dict(size=4),
+                hovertemplate="<b>%{x}</b><br>生産量: %{y:.1f} 千トン<extra></extra>",
+            ))
+            fig.update_yaxes(title="生産量 (千トン)")
+            fig.update_xaxes(title="期間")
+            st.plotly_chart(styled_fig(fig, height=320), use_container_width=True)
+            # Recent 12 months table
+            st.markdown("**直近12ヶ月**")
+            recent = sub.tail(12)[["period", "product", "value", "unit"]].copy()
+            st.dataframe(recent, use_container_width=True, hide_index=True)
+            # YoY change
+            if len(sub) >= 13:
+                last = sub.iloc[-1]
+                yoy = sub.iloc[-13]
+                pct = (last["value"] / yoy["value"] - 1) * 100 if yoy["value"] else None
+                if pct is not None:
+                    st.metric(f"直近 ({last['period']}) YoY", f"{pct:+.1f}%", help=f"前年同月 {yoy['period']} 比")
+
+    st.divider()
     source_inspector.render_source("comtrade_trade", parquet, key_suffix="axis2")
+    source_inspector.render_source("jpca_monthly", jpca_p)
+    estat_p = latest_parquet(ROOT / "data" / "estat", "estat_trade")
+    source_inspector.render_source("estat_trade", estat_p)
 
 
 # ---------- tab 3 ----------
