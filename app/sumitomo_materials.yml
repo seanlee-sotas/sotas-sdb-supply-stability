@@ -1,0 +1,1199 @@
+# 住友ゴム工業 (DUNLOP) — 既調達物質 (pinned) + 新規ウォッチ物質 (watch) マスタ
+# 出典: 有価証券報告書 2025年12月期 + 統合報告書 2025年12月期
+# 抽出元 Vault docs:
+#   - Vault/Projects/202605_sdb-supply-stability/analysis_住友ゴム_物質絞り込み.md
+#   - Vault/Projects/202605_sdb-supply-stability/analysis_住友ゴム_物質出典一覧.md
+
+metadata:
+  source_company: "住友ゴム工業株式会社 (DUNLOP)"
+  ticker: "5110"
+  edinet_code: "E01110"
+  fiscal_year: "2025年12月期"
+  source_files:
+    - "住友ゴム工業_有価証券報告書_2025年12月期.md"
+    - "住友ゴム工業_統合報告書_2025年12月期.md"
+  generated_at: "2026-05-21"
+
+business_segments:
+  tire:
+    label: "タイヤ事業"
+    icon: "🛞"
+    revenue_jpy_m: 1043683
+    revenue_share: 0.865
+    business_profit_jpy_m: 79812
+    description: "自動車用・産業車両用・モーターサイクル用タイヤ、パンク応急修理剤"
+  sports:
+    label: "スポーツ事業"
+    icon: "🏌"
+    revenue_jpy_m: 125574
+    revenue_share: 0.104
+    business_profit_jpy_m: 6831
+    description: "ゴルフクラブ・ボール、テニス用品"
+  industrial:
+    label: "産業品他事業"
+    icon: "🏭"
+    revenue_jpy_m: 37804
+    revenue_share: 0.031
+    business_profit_jpy_m: null
+    description: "制振ダンパー、医療用ゴム、防舷材、人工芝、ゴム手袋、OA機器用ゴム"
+  new_business:
+    label: "新規事業候補"
+    icon: "🚀"
+    revenue_jpy_m: 0
+    revenue_share: 0.0
+    business_profit_jpy_m: null
+    description: "リチウム硫黄電池正極、がん細胞吸着ポリマー、3Dプリンタ造形用材、Viaduct AI"
+
+evidence_layers:
+  A:
+    label: "直接記述"
+    short: "A 直接"
+    description: "有報・統合報告書に固有名詞や戦略表現で明示"
+    color: "#0F766E"
+  B:
+    label: "業界常識"
+    short: "B 常識"
+    description: "タイヤ・医療ゴム業界の標準配合として明らかだが、社名指定の引用はない"
+    color: "#CA8A04"
+  C:
+    label: "規制動向"
+    short: "C 規制"
+    description: "住友ゴム個別記載なし、業界全体の規制圧から推定"
+    color: "#9333EA"
+
+# status: pinned = いま使っている, watch = これから使いたい
+
+materials:
+
+  # ========================================
+  # A群: 既調達物質 (pinned)
+  # ========================================
+
+  # --- A-1 タイヤ事業 基幹原料 ---
+
+  - id: nr_natural_rubber
+    cas: "9006-04-6"
+    name_ja: "天然ゴム (NR / TSR20 / RSS3)"
+    name_en: "Natural rubber"
+    aliases: [NR, TSR20, RSS3, ラテックス]
+    status: pinned
+    segments: [tire, sports, industrial]
+    primary_segment: tire
+    usage_note: "トレッド・サイドウォール・カーカス（タイヤ主原料）、テニス/ゴルフボール、ゴム手袋、防舷材"
+    evidence_layer: A
+    citations:
+      - source: "有報2025"
+        line: 232
+        text: "SUMITOMO RUBBER SINGAPORE PTE. LTD.（シンガポール ハーバーフロント）／タイヤ／100.0／天然ゴムの仕入 当社が債務保証を行っている"
+      - source: "有報2025"
+        line: 575
+        text: "自然関連のシナリオ分析においては、当社グループにとって特に重要度の高いコモディティである天然ゴムを対象に"
+      - source: "有報2025"
+        line: 1268
+        text: "原材料では天然ゴム価格の上昇、経費では人件費の増加によりそれぞれ減益要因"
+    risk_tags: [EUDR, ASEAN集中, 価格変動]
+
+  - id: ssbr
+    cas: "9003-55-8"
+    name_ja: "溶液重合SBR (S-SBR)"
+    name_en: "Solution-polymerized styrene-butadiene rubber"
+    aliases: [SSBR, ソリューションSBR, S-SBR]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "低燃費トレッド配合"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1841
+        text: "●ソリューションSBR開発 1996年"
+    risk_tags: [国内寡占]
+
+  - id: esbr
+    cas: "9003-55-8"
+    name_ja: "乳化重合SBR (E-SBR)"
+    name_en: "Emulsion-polymerized styrene-butadiene rubber"
+    aliases: [ESBR, E-SBR]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "一般タイヤトレッド"
+    evidence_layer: B
+    citations:
+      - source: "有報2025"
+        line: 646
+        text: "天然ゴム・合成ゴムやその他原材料を混合する際に、電力を大量に消費"
+    risk_tags: [国内寡占]
+
+  - id: br
+    cas: "9003-17-4"
+    name_ja: "ブタジエンゴム (BR / 高シスBR)"
+    name_en: "Polybutadiene rubber (high-cis)"
+    aliases: [BR, 高シスBR, 1,4-cis-Polybutadiene]
+    status: pinned
+    segments: [tire, sports]
+    primary_segment: tire
+    usage_note: "サイドウォール・耐摩耗、ゴルフボールコア"
+    evidence_layer: B
+    citations:
+      - source: "有報2025"
+        line: 646
+        text: "天然ゴム・合成ゴムやその他原材料を混合する際に、電力を大量に消費"
+    risk_tags: []
+
+  - id: butadiene
+    cas: "106-99-0"
+    name_ja: "1,3-ブタジエン"
+    name_en: "1,3-Butadiene"
+    aliases: [Butadiene, ブタジエン]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "SBR/BR原料モノマー"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "SBR/BR の原料モノマー。国内3社（ENEOS / UBE / 三菱ケミカル）が主要サプライヤー"
+    risk_tags: [国内3社寡占]
+
+  - id: styrene
+    cas: "100-42-5"
+    name_ja: "スチレン"
+    name_en: "Styrene"
+    aliases: [Styrene, スチレンモノマー]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "SBR原料モノマー"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "SBR の原料モノマー"
+    risk_tags: []
+
+  - id: carbon_black
+    cas: "1333-86-4"
+    name_ja: "カーボンブラック (CB)"
+    name_en: "Carbon black"
+    aliases: [CB, カーボンブラック]
+    status: pinned
+    segments: [tire, industrial]
+    primary_segment: tire
+    usage_note: "補強充填剤（タイヤ重量の20-30%）、OA機器用導電ゴム"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 2148
+        text: "三菱ケミカル社と協業し、タイヤの主原料であるカーボンブラックにおける資源循環の取り組みを開始"
+      - source: "有報2025"
+        line: 1322
+        text: "2025年11月からは当社宮崎工場で初めて資源循環型カーボンブラックを一部乗用車向け量産タイヤに採用"
+    risk_tags: [国内2社寡占, 三菱ケミカル協業]
+
+  - id: silica_precipitated
+    cas: "7631-86-9"
+    name_ja: "沈降シリカ"
+    name_en: "Precipitated silica"
+    aliases: [シリカ, Silica, SiO2]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "低燃費タイヤ補強材（CB部分代替）"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1853
+        text: "●ラベリング制度『AAA-a』最高ランク『エナセーブ NEXT』低燃費タイヤ"
+    risk_tags: [低燃費タイヤ必須]
+
+  - id: silane_tespt
+    cas: "40372-72-3"
+    name_ja: "シランカップリング剤 TESPT (Si-69)"
+    name_en: "Bis(triethoxysilylpropyl)tetrasulfide"
+    aliases: [TESPT, Si-69, シランカップリング剤]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "シリカ表面処理"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "シリカ配合タイヤに必須のカップリング剤。Evonik が世界寡占"
+    risk_tags: [世界寡占]
+
+  - id: sulfur
+    cas: "7704-34-9"
+    name_ja: "硫黄"
+    name_en: "Sulfur"
+    aliases: [Sulfur, S]
+    status: pinned
+    segments: [tire, new_business]
+    primary_segment: tire
+    usage_note: "加硫剤（タイヤ）、新規事業ではリチウム硫黄電池正極活物質候補"
+    evidence_layer: A
+    citations:
+      - source: "有報2025"
+        line: 644
+        text: "タイヤ製造における加硫工程で使用する燃料"
+      - source: "統合報告書2025"
+        line: 616
+        text: "タイヤ材料の硫黄の研究に基づくリチウム硫黄電池の正極材活物質"
+    risk_tags: [石化副生品, 偏在的]
+
+  - id: zinc_oxide
+    cas: "1314-13-2"
+    name_ja: "酸化亜鉛 (ZnO)"
+    name_en: "Zinc oxide"
+    aliases: [ZnO, 酸化亜鉛, 亜鉛華]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "加硫活性剤"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "ゴム加硫の四大配合剤の1つ。亜鉛環境負荷で削減議論あり"
+    risk_tags: [亜鉛環境規制]
+
+  - id: stearic_acid
+    cas: "57-11-4"
+    name_ja: "ステアリン酸"
+    name_en: "Stearic acid"
+    aliases: [Stearic acid]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "加硫活性剤・分散助剤"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "ゴム加硫の四大配合剤の1つ"
+    risk_tags: []
+
+  - id: cbs_accelerator
+    cas: "95-33-0"
+    name_ja: "加硫促進剤 CBS"
+    name_en: "N-Cyclohexyl-2-benzothiazole sulfenamide"
+    aliases: [CBS]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "加硫促進剤"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "タイヤ加硫の標準促進剤"
+    risk_tags: []
+
+  - id: tbbs_accelerator
+    cas: "95-31-8"
+    name_ja: "加硫促進剤 TBBS"
+    name_en: "N-tert-Butyl-2-benzothiazole sulfenamide"
+    aliases: [TBBS]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "加硫促進剤"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "タイヤ加硫の標準促進剤"
+    risk_tags: []
+
+  - id: ppd6_antioxidant
+    cas: "793-24-8"
+    name_ja: "6PPD (老化防止剤)"
+    name_en: "N-(1,3-Dimethylbutyl)-N'-phenyl-p-phenylenediamine"
+    aliases: [6PPD]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "耐オゾン・耐熱劣化老化防止剤"
+    evidence_layer: C
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "全タイヤメーカーが使用する業界標準老化防止剤"
+      - source: "規制動向"
+        line: null
+        text: "米WA州を中心に 6PPD-quinone の水質汚染（鮭の急性毒性）議論が加速、業界全体で代替探索フェーズ"
+      - source: "統合報告書2025"
+        line: 2064
+        text: "各種規制強化対応、炭素価格導入等によるコスト増"
+    risk_tags: [6PPD-quinone規制, 業界代替探索]
+
+  - id: tdae_oil
+    cas: "64742-46-7"
+    name_ja: "TDAE オイル（処理留出油）"
+    name_en: "Treated distillate aromatic extract"
+    aliases: [TDAE, 処理留出油]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "可塑剤・伸展油（EU REACH対応低多環芳香族）"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "EU REACH対応の標準伸展油。原油精製の副産物"
+    risk_tags: [原油連動]
+
+  - id: pet_cord
+    cas: "25038-59-9"
+    name_ja: "ポリエステル繊維 (PET)"
+    name_en: "Polyethylene terephthalate"
+    aliases: [PET, ポリエステル]
+    status: pinned
+    segments: [tire, sports]
+    primary_segment: tire
+    usage_note: "タイヤカーカスコード、テニスストリング"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1841
+        text: "●テキスタイル ラジアルタイヤ上市"
+    risk_tags: []
+
+  - id: nylon66_cord
+    cas: "32131-17-2"
+    name_ja: "ナイロン66"
+    name_en: "Nylon 6,6"
+    aliases: [Nylon66, ナイロン66, PA66]
+    status: pinned
+    segments: [tire, sports]
+    primary_segment: tire
+    usage_note: "カーカス・キャップコード、テニスストリング"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "高速ラジアルタイヤのキャップコードに使用"
+    risk_tags: []
+
+  - id: rayon_viscose
+    cas: "9004-34-6"
+    name_ja: "レーヨン (Viscose)"
+    name_en: "Viscose rayon"
+    aliases: [Rayon, レーヨン]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "高性能タイヤカーカス"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "高性能タイヤの一部に使用"
+    risk_tags: []
+
+  - id: aramid_kevlar
+    cas: "24938-64-5"
+    name_ja: "アラミド (Kevlar/Twaron)"
+    name_en: "Para-aramid"
+    aliases: [Kevlar, Twaron, アラミド]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "UHP・ランフラットの補強"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "UHP・ランフラットタイヤの補強材"
+    risk_tags: [DuPont/Teijin寡占]
+
+  - id: steel_cord
+    cas: null
+    name_ja: "スチールコード (真鍮メッキ鋼線)"
+    name_en: "Brass-plated steel cord"
+    aliases: [Steel cord, スチールコード]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "ベルト・ビード補強"
+    evidence_layer: A
+    citations:
+      - source: "有報2025"
+        line: 245
+        text: "栃木住友電工㈱／タイヤ／33.3／同社の親会社である住友電気工業㈱より同社製スチールコードを仕入れている"
+      - source: "有報2025"
+        line: 247
+        text: "住友電気工業㈱／スチールコードの仕入"
+    risk_tags: [住友電工単独依存]
+    hs6_override: "731210"
+
+  - id: iir_butyl
+    cas: "9010-85-9"
+    name_ja: "ブチルゴム (IIR)"
+    name_en: "Isobutylene-isoprene rubber"
+    aliases: [IIR, Butyl rubber]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "インナーライナー（気密層）"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "タイヤインナーライナーの業界標準"
+    risk_tags: [世界寡占]
+
+  - id: halobutyl
+    cas: "68441-14-5"
+    name_ja: "ハロブチル (CIIR/BIIR)"
+    name_en: "Halogenated butyl rubber"
+    aliases: [CIIR, BIIR, Halobutyl]
+    status: pinned
+    segments: [tire, industrial]
+    primary_segment: tire
+    usage_note: "気密層、医療用バイアル栓・プレフィルドシリンジガスケット"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1984
+        text: "バイアル用ゴム栓、プレフィルドシリンジに使用されるガスケットやキャップ……独自のゴム配合技術（薬剤に影響を及ぼす不純物が溶出されにくい）"
+    risk_tags: [世界寡占, USP/EP規格]
+
+  - id: tackifier_resin
+    cas: null
+    name_ja: "タッキファイヤー樹脂 (C5/C9/フェノール樹脂)"
+    name_en: "Tackifier resins"
+    aliases: [Tackifier, タッキファイヤー]
+    status: pinned
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "グリーンタック付与"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1841
+        text: "●原材料改質技術"
+    risk_tags: [原油連動]
+
+  # --- A-2 スポーツ事業 ---
+
+  - id: ionomer_resin
+    cas: null
+    name_ja: "アイオノマー樹脂 (Surlyn等)"
+    name_en: "Ionomer resin (EMAA-Zn/Na salt)"
+    aliases: [Ionomer, Surlyn, アイオノマー]
+    status: pinned
+    segments: [sports]
+    primary_segment: sports
+    usage_note: "ゴルフボールカバー（XXIO HYPER RD等）"
+    evidence_layer: A
+    citations:
+      - source: "有報2025"
+        line: 1356
+        text: "ゴルフボールでは新開発のソフトアイオノマーカバーと新開発ディンプル……XXIO HYPER RD"
+      - source: "統合報告書2025"
+        line: 1841
+        text: "■アイオノマー樹脂カバー"
+    risk_tags: [Dow/SK単独寡占]
+
+  - id: tpu_urethane
+    cas: "9009-54-5"
+    name_ja: "ポリウレタン (TPU カバー)"
+    name_en: "Thermoplastic polyurethane"
+    aliases: [TPU, ポリウレタン]
+    status: pinned
+    segments: [sports, industrial]
+    primary_segment: sports
+    usage_note: "SRIXON Z-STAR系上級ボールカバー、テニスラケットグロメット、塗床材"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1853
+        text: "■ウレタンカバー『SRIXON Z-UR』"
+    risk_tags: [MDI/TDI規制動向]
+
+  - id: titanium_alloy
+    cas: null
+    name_ja: "チタン合金 (Ti-6Al-4V)"
+    name_en: "Titanium alloy Ti-6Al-4V"
+    aliases: [チタン合金, Ti-6Al-4V]
+    status: pinned
+    segments: [sports]
+    primary_segment: sports
+    usage_note: "ゴルフクラブドライバーヘッド"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1853
+        text: "■1995年 チタン合金 ヘッド"
+      - source: "統合報告書2025"
+        line: 1853
+        text: "■2005年 最薄『TANGENT チタン240』ドライバー、アイアン登場"
+    risk_tags: [武器転用規制, 中露集中]
+    hs6_override: "810890"
+
+  - id: tungsten
+    cas: "7440-33-7"
+    name_ja: "タングステン (W)"
+    name_en: "Tungsten"
+    aliases: [W, タングステン]
+    status: pinned
+    segments: [sports]
+    primary_segment: sports
+    usage_note: "ゴルフクラブ重量配合・ボール『TOUR SPECIAL METAL MIX W』"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1841
+        text: "■『TOUR SPECIAL METAL MIX W』タングステン配合ゴルフボール"
+      - source: "規制動向"
+        line: null
+        text: "中国84%生産集中、米国「特定重要鉱物」指定"
+    risk_tags: [中国84%集中, 米重要鉱物指定]
+    hs6_override: "810194"
+
+  - id: carbon_fiber
+    cas: null
+    name_ja: "炭素繊維 (PAN系 Carbon Fiber)"
+    name_en: "Carbon fiber (PAN-based)"
+    aliases: [Carbon fiber, 炭素繊維, CFRP]
+    status: pinned
+    segments: [sports]
+    primary_segment: sports
+    usage_note: "カーボンシャフト・テニスラケットフレーム"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1841
+        text: "■カーボンシャフト登場"
+    risk_tags: [東レ/三菱ケミカル/帝人 国内3社寡占]
+
+  - id: tennis_ball_felt
+    cas: null
+    name_ja: "テニスボールフェルト (ウール+ナイロン混紡)"
+    name_en: "Tennis ball felt"
+    aliases: [Felt, フェルト]
+    status: pinned
+    segments: [sports]
+    primary_segment: sports
+    usage_note: "テニスボール被覆"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1960
+        text: "素材であるゴム、フェルト材、ボールコア内で使用する溶剤などあらゆる角度から研究"
+    risk_tags: [豪ウール集中]
+
+  # --- A-3 産業品他事業 ---
+
+  - id: bromobutyl
+    cas: "68441-14-5"
+    name_ja: "ブロモブチル (BIIR)"
+    name_en: "Bromobutyl rubber"
+    aliases: [BIIR, ブロモブチル]
+    status: pinned
+    segments: [industrial]
+    primary_segment: industrial
+    usage_note: "メディカルラバー成長エンジン: バイアル栓・プレフィルドシリンジガスケット"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1984
+        text: "バイアル用ゴム栓、プレフィルドシリンジに使用されるガスケットやキャップは薬剤に直接触れるため、薬剤と同等レベルの品質が要求"
+      - source: "有報2025"
+        line: 1368
+        text: "メディカルラバー事業では、バイオ医薬品向け製品の拡充に向けた開発を進めております"
+    risk_tags: [世界寡占, バイオ医薬成長]
+
+  - id: pdms_silicone
+    cas: "63148-62-9"
+    name_ja: "ポリジメチルシロキサン (PDMS / シリコーンオイル)"
+    name_en: "Polydimethylsiloxane"
+    aliases: [PDMS, シリコーンオイル]
+    status: pinned
+    segments: [industrial]
+    primary_segment: industrial
+    usage_note: "プレフィルドシリンジ潤滑コーティング"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "プレフィルドシリンジ業界標準潤滑剤"
+    risk_tags: [PFAS規制動向]
+
+  - id: high_damping_rubber
+    cas: null
+    name_ja: "高減衰ゴム配合（天然ゴム+フェノール樹脂系）"
+    name_en: "High damping rubber compound"
+    aliases: [高減衰ゴム, MIRAIE配合, MAMORY配合]
+    status: pinned
+    segments: [industrial]
+    primary_segment: industrial
+    usage_note: "制振ダンパー MIRAIE/MAMORY（累計14.2万棟）、寺社仏閣向け"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1974
+        text: "レース用タイヤの配合をベースに、運動エネルギーを効率よく熱エネルギーに変換する高減衰ゴム技術を活用した開発は、2005年にその実を結び、大手ハウスメーカー向けに制振ダンパーの納入が始まりました"
+      - source: "統合報告書2025"
+        line: 1976
+        text: "累計で14万2千棟"
+    risk_tags: [住友ゴム独自配合]
+
+  - id: ldp_natural_rubber_latex
+    cas: "9006-04-6"
+    name_ja: "天然ゴムラテックス（低アレルゲン処理）"
+    name_en: "Low-allergen natural rubber latex"
+    aliases: [低アレルゲンラテックス]
+    status: pinned
+    segments: [industrial]
+    primary_segment: industrial
+    usage_note: "炊事・作業用ゴム手袋"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1853
+        text: "★低アレルゲン ゴム手袋"
+    risk_tags: [EUDR]
+
+  - id: artificial_turf_pe
+    cas: null
+    name_ja: "ポリエチレン繊維 / ポリプロピレン繊維"
+    name_en: "Polyethylene / Polypropylene fiber"
+    aliases: [PE繊維, PP繊維, 人工芝パイル]
+    status: pinned
+    segments: [industrial]
+    primary_segment: industrial
+    usage_note: "スポーツ用人工芝ハイブリッドターフREX（パイル原料）"
+    evidence_layer: A
+    citations:
+      - source: "有報2025"
+        line: 1366
+        text: "スポーツ施設用床材において、選手のニーズに応えるスポーツ用人工芝『ハイブリッドターフREX(レックス)』を発売"
+    risk_tags: []
+
+  - id: sbr_chip_filler
+    cas: null
+    name_ja: "充填材 SBR ゴムチップ"
+    name_en: "SBR rubber chip filler"
+    aliases: [SBR チップ, ゴムチップ]
+    status: pinned
+    segments: [industrial]
+    primary_segment: industrial
+    usage_note: "人工芝充填材（マイクロプラスチック問題で代替検討中）"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 2182
+        text: "スポーツ用人工芝由来のマイクロプラスチック問題への取り組みについて"
+    risk_tags: [EUマイクロプラ規制2031全廃]
+
+  - id: oa_conductive_rubber
+    cas: null
+    name_ja: "OA機器用導電性ゴム配合"
+    name_en: "Conductive rubber for OA equipment"
+    aliases: [導電性ゴム, OAゴム]
+    status: pinned
+    segments: [industrial]
+    primary_segment: industrial
+    usage_note: "OA機器用ロール・部品"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1841
+        text: "★OA機器用 ゴム部品 ★OA機器用 導電系ゴム"
+      - source: "有報2025"
+        line: 147
+        text: "高機能ゴム事業（制振ダンパー、OA機器用ゴム、医療用ゴム等）"
+    risk_tags: []
+
+  # ========================================
+  # B群: 新規ウォッチ物質 (watch)
+  # ========================================
+
+  # --- B-1 タイヤ事業 サステナブル原材料 ---
+
+  - id: recycled_carbon_black
+    cas: "1333-86-4"
+    name_ja: "資源循環型カーボンブラック (TOWANOWA)"
+    name_en: "Circular carbon black (TOWANOWA)"
+    aliases: [TOWANOWA, リサイクルCB, 循環型CB]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "TOWANOWA × 三菱ケミカル、宮崎工場2025年11月開始、26年以降採用拡大"
+    evidence_layer: A
+    citations:
+      - source: "有報2025"
+        line: 1322
+        text: "2025年11月からは当社宮崎工場で初めて資源循環型カーボンブラックを一部乗用車向け量産タイヤに採用しております"
+      - source: "統合報告書2025"
+        line: 2148
+        text: "三菱ケミカル社と協業し、タイヤの主原料であるカーボンブラックにおける資源循環の取り組みを開始"
+    risk_tags: [三菱ケミカル単独協業, TOWANOWA中核]
+
+  - id: eudr_compliant_nr
+    cas: "9006-04-6"
+    name_ja: "EUDR準拠 天然ゴム"
+    name_en: "EUDR-compliant natural rubber"
+    aliases: [EUDR NR, トレーサブル天然ゴム]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "2025年末義務化、業界全体で訪問監査、サプライヤー連携強化"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 2334
+        text: "2025年末からEUDRへの遵守が義務化されました。経営層から現場部門に至るまで、関係役職員が天然ゴムの持続可能性に関するコミットメントを理解し、EUDRに確実に準拠"
+      - source: "統合報告書2025"
+        line: 2263
+        text: "EUDR：天然ゴムサプライヤーとの連携強化のため訪問監査を実施"
+    risk_tags: [EUDR義務化, トレーサビリティ]
+
+  - id: enr_epoxidized_nr
+    cas: null
+    name_ja: "エポキシ化天然ゴム (ENR)"
+    name_en: "Epoxidized natural rubber"
+    aliases: [ENR, エポキシ化天然ゴム]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "エナセーブ100の主成分、サステナブル原材料目標の主役"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1853
+        text: "●エポキシ化 天然ゴム ●石油外天然資源比率100%タイヤ『エナセーブ 100』"
+      - source: "有報2025"
+        line: 772
+        text: "サステナブル原材料比率について2030年までに40%、2050年までに100%を達成"
+    risk_tags: [国内製造能力少, マレーシア/タイ依存]
+
+  - id: dpnr_high_purity
+    cas: null
+    name_ja: "脱タンパク天然ゴム (DPNR / 高純度NR)"
+    name_en: "Deproteinized natural rubber"
+    aliases: [DPNR, 脱タンパクNR]
+    status: watch
+    segments: [tire, industrial]
+    primary_segment: tire
+    usage_note: "エナセーブSP688Ace、医療手袋低アレルゲン版"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1853
+        text: "○脱タンパク 天然ゴム ラテックス ○高純度 天然ゴム開発『エナセーブSP688Ace』"
+    risk_tags: [高純度プロセス保有限定]
+
+  - id: bio_butadiene
+    cas: "106-99-0"
+    name_ja: "バイオベース ブタジエン / バイオSBR"
+    name_en: "Bio-based butadiene / Bio-SBR"
+    aliases: [Bio-butadiene, バイオSBR]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "サステナブル合成ゴム"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 2073
+        text: "代替原材料の検討継続。新規原材料導入に向けた設備対応の計画策定"
+    risk_tags: [商業化遅延リスク, 欧米中心]
+
+  - id: rpet_cord
+    cas: "25038-59-9"
+    name_ja: "リサイクルPET由来 ポリエステルコード"
+    name_en: "Recycled PET polyester cord"
+    aliases: [rPET, リサイクルPET]
+    status: watch
+    segments: [tire, sports]
+    primary_segment: tire
+    usage_note: "カーカスのサステナブル化、テニスボールパッケージ"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 2073
+        text: "テニスボールパッケージについて海外での紙フタ化、紙ラベル化実施、リサイクルペット比率の向上"
+      - source: "統合報告書2025"
+        line: 1145
+        text: "プラスチック削減 タイヤラベル、商品包装材、販促ツール等のプラスチック使用量2019年比40%削減"
+    risk_tags: [飲料向け競合, 価格ボラ]
+
+  - id: rice_husk_silica
+    cas: "7631-86-9"
+    name_ja: "籾殻由来シリカ (Rice Husk Silica)"
+    name_en: "Rice husk silica"
+    aliases: [籾殻シリカ, Rice husk silica]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "沈降シリカのバイオ版、業界全体で実証フェーズ"
+    evidence_layer: B
+    citations:
+      - source: "統合報告書2025"
+        line: 2073
+        text: "サステナブル原材料を用いた配合開発を継続"
+      - source: "業界動向"
+        line: null
+        text: "Evonik・PPG・Solvay等が籾殻由来シリカを商業化中"
+    risk_tags: [インド/東南アジア集中, 工程変動]
+
+  - id: hydrogen
+    cas: "1333-74-0"
+    name_ja: "水素 (加硫工程燃料)"
+    name_en: "Hydrogen"
+    aliases: [H2, 水素]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "2025年水素ボイラー本稼働、スコープ1削減の主役"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 2073
+        text: "水素ボイラーで使用する水素の製造装置導入(2025)。3月に水素ボイラーの実証実験を終了し、以後は動力設備として運用継続"
+      - source: "有報2025"
+        line: 616
+        text: "水素に関する実証実験と製造プロセスへの活用"
+    risk_tags: [供給インフラ未成熟]
+
+  - id: active_tread_water_switch
+    cas: null
+    name_ja: "アクティブトレッド「水スイッチ」用イオン結合系材料"
+    name_en: "Active Tread water switch ionic-bond material"
+    aliases: [水スイッチ, Water switch]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "共有結合の一部をイオン結合化、Zn/Mg/Caカルボキシレート想定"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1900
+        text: "水スイッチ：ポリマー間の強固な『共有結合』の一部を水で解離できる『イオン結合』に置き換え"
+    risk_tags: [独自配合, 限定供給網]
+
+  - id: active_tread_temp_switch
+    cas: null
+    name_ja: "アクティブトレッド「温度スイッチ」用低Tg成分"
+    name_en: "Active Tread temperature switch low-Tg component"
+    aliases: [温度スイッチ, Temperature switch]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "低温で軟化する特殊ポリマー、SYNCHRO WEATHER搭載"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1884
+        text: "温度スイッチ：ゴムに含まれる低温で硬くなる成分を最適化することで、氷上(低温下)においてゴムが硬くなりづらく"
+    risk_tags: [開発委託先国内特定数社]
+
+  - id: active_tread_third_switch
+    cas: null
+    name_ja: "アクティブトレッド「第3のスイッチ・次世代スイッチ」"
+    name_en: "Active Tread 3rd/next-gen switch"
+    aliases: [第3スイッチ, Third switch]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "2027年欧米展開予定、超高性能スポーツ/SUV/ピックアップ向け"
+    evidence_layer: A
+    citations:
+      - source: "有報2025"
+        line: 1336
+        text: "2027年には、進化したアクティブトレッド技術を搭載したオールシーズン・オールウェザータイヤを欧米へ展開予定であり、『水』や『温度』に続く第３のスイッチは超高性能スポーツおよびピックアップトラック、SUVカテゴリーへの投入に向けて着実に開発を進めて"
+      - source: "有報2025"
+        line: 1336
+        text: "今後は環境に応じた性能に変化する次世代スイッチの開発などアクティブトレッド技術の進化"
+    risk_tags: [未公表構造, 2027年量産]
+
+  - id: hsbr_hnbr
+    cas: null
+    name_ja: "水素添加 SBR / NBR (HSBR / HNBR)"
+    name_en: "Hydrogenated SBR / HNBR"
+    aliases: [HSBR, HNBR, 水素添加ポリマー]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "耐熱耐久タイヤ・新材料"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1853
+        text: "●水素添加ポリマー開発"
+    risk_tags: [JSR/ARLANXEO/Zeon限定]
+
+  - id: airless_tire_resin
+    cas: "31694-16-3"
+    name_ja: "エアレスタイヤ用構造樹脂 (PEEK等)"
+    name_en: "Airless tire structural resin (PEEK)"
+    aliases: [PEEK, エアレス, Airless]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "2025年エアレスタイヤ発表、補強スポーク用"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1853
+        text: "●エアレスタイヤ発表 2025年"
+    risk_tags: [Victrex/Solvay世界寡占, 価格ボラ大]
+
+  - id: ev_acoustic_foam
+    cas: null
+    name_ja: "EV静粛化用ポリウレタンフォーム"
+    name_en: "EV-tire acoustic polyurethane foam"
+    aliases: [PU フォーム, 吸音スポンジ]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "e.SPORT MAXX等EV専用タイヤ標準装備、需要急増"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1853
+        text: "●『e.SPORT MAXX』EV車専用タイヤ"
+      - source: "統合報告書2025"
+        line: 1841
+        text: "●特殊吸音スポンジ搭載タイヤ2006年『LE MANS LM703』発売"
+    risk_tags: [MDI/TDI輸出規制動向]
+
+  - id: ppd6_substitute
+    cas: null
+    name_ja: "代替老化防止剤 (6PPD代替)"
+    name_en: "6PPD substitute antioxidant"
+    aliases: [6PPD代替, Non-6PPD]
+    status: watch
+    segments: [tire]
+    primary_segment: tire
+    usage_note: "6PPD-quinone水質汚染問題で米WA州等が規制議論、業界代替探索"
+    evidence_layer: C
+    citations:
+      - source: "規制動向"
+        line: null
+        text: "米WA州を起点に 6PPD-quinone 水質規制議論が加速、業界全体が代替探索フェーズ"
+    risk_tags: [規制最速動向, ピン留め必須]
+
+  # --- B-2 スポーツ事業 ---
+
+  - id: bio_polyol_corn
+    cas: null
+    name_ja: "バイオポリオール (トウモロコシ由来)"
+    name_en: "Bio-polyol (corn-derived)"
+    aliases: [Bio-polyol, バイオポリオール]
+    status: watch
+    segments: [sports]
+    primary_segment: sports
+    usage_note: "SRIXON Z-STAR XV ウレタンカバー、世界初の取り組み"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1592
+        text: "材料の一部にトウモロコシから抽出したバイオポリオールを配合した環境配慮型の製品で、ゴルフボールとして世界でも画期的な取り組み"
+      - source: "統合報告書2025"
+        line: 1948
+        text: "2025年にはトウモロコシ由来の素材をウレタンカバーに配合したゴルフボールを発売"
+    risk_tags: [北米トウモロコシ集中, 作況リスク]
+
+  - id: recycled_golf_ball_rubber
+    cas: null
+    name_ja: "練習用ゴルフボール向けリサイクルゴム"
+    name_en: "Recycled rubber for practice golf balls"
+    aliases: [リサイクルゴム]
+    status: watch
+    segments: [sports]
+    primary_segment: sports
+    usage_note: "練習用ボール2030年20%サステナブル化目標"
+    evidence_layer: A
+    citations:
+      - source: "有報2025"
+        line: 1358
+        text: "サステナブル原材料を82%使用したサステナブルゴルフボール『スリクソンZ-STAR+e80』(非売品)"
+    risk_tags: [国内リサイクラー寡占]
+
+  # --- B-3 産業品事業 ---
+
+  - id: biopharma_low_extract_gasket
+    cas: null
+    name_ja: "バイオ医薬品向け 超低溶出ガスケット用材料"
+    name_en: "Low-extractable gasket material for biopharma"
+    aliases: [バイオ医薬ガスケット]
+    status: watch
+    segments: [industrial]
+    primary_segment: industrial
+    usage_note: "国内シェア確保→欧米メガファーマ進出、生産能力増強投資"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1986
+        text: "今後の成長エンジンは生産能力の拡大と、バイオ医薬品向けの付加価値の高いガスケットの開発となります。まずは、国内で培った顧客との信頼関係をベースにして、グローバル展開に必要な基盤を固め、欧米のメガファーマ市場にチャレンジ"
+      - source: "統合報告書2025"
+        line: 1716
+        text: "メディカルラバー事業ではバイオ医薬品向けのゴム製品の開発と供給体制の増強"
+    risk_tags: [USP/EP規制対応, West Pharma系FluroTec依存]
+
+  - id: ptfe_etfe_film
+    cas: "9002-84-0"
+    name_ja: "フッ素樹脂被覆フィルム (ETFE/PTFE)"
+    name_en: "Fluoropolymer film (ETFE/PTFE)"
+    aliases: [ETFE, PTFE, フッ素樹脂]
+    status: watch
+    segments: [industrial]
+    primary_segment: industrial
+    usage_note: "プレフィルドシリンジの薬剤接触面被覆"
+    evidence_layer: C
+    citations:
+      - source: "規制動向"
+        line: null
+        text: "PFAS規制（EU・米州レベルで段階的拡大）"
+    risk_tags: [PFAS規制]
+
+  - id: new_marine_fender
+    cas: null
+    name_ja: "新型防舷材用 補強鋼材＋特殊配合ゴム"
+    name_en: "New marine fender (reinforced steel + special rubber)"
+    aliases: [新型防舷材]
+    status: watch
+    segments: [industrial]
+    primary_segment: industrial
+    usage_note: "港湾整備向け新型上市予定"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 1718
+        text: "港湾整備に欠かせない新型防舷材の上市を予定"
+    risk_tags: [港湾向け国内2-3社]
+
+  - id: microplastic_alt_filler
+    cas: null
+    name_ja: "マイクロプラ対応 人工芝充填材代替材"
+    name_en: "Microplastic-free artificial turf infill"
+    aliases: [コルク充填材, オリーブ核殻]
+    status: watch
+    segments: [industrial]
+    primary_segment: industrial
+    usage_note: "福島自然共生サイト課題対応、コルク/オリーブ核殻等が候補"
+    evidence_layer: C
+    citations:
+      - source: "統合報告書2025"
+        line: 2182
+        text: "スポーツ用人工芝由来のマイクロプラスチック問題への取り組み"
+      - source: "規制動向"
+        line: null
+        text: "EUマイクロプラスチック規制（2031年全廃）"
+    risk_tags: [EU2031全廃]
+
+  # --- B-4 新規事業候補 ---
+
+  - id: li_s_battery_sulfur
+    cas: "7704-34-9"
+    name_ja: "リチウム硫黄電池 正極活物質グレード硫黄"
+    name_en: "Lithium-sulfur battery cathode sulfur"
+    aliases: [Li-S 硫黄, Battery sulfur]
+    status: watch
+    segments: [new_business]
+    primary_segment: new_business
+    usage_note: "タイヤ材料の硫黄の研究に基づくリチウム硫黄電池の正極材活物質"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 616
+        text: "タイヤ材料の硫黄の研究に基づくリチウム硫黄電池の正極材活物質をはじめ"
+      - source: "統合報告書2025"
+        line: 1853
+        text: "○リチウム硫黄電池正極活物質開発"
+    risk_tags: [石化副生品, 偏在的]
+
+  - id: li_compounds
+    cas: "12136-58-2"
+    name_ja: "リチウム化合物 (Li2S, LiNO3等)"
+    name_en: "Lithium compounds for Li-S battery"
+    aliases: [Li2S, LiNO3, リチウム化合物]
+    status: watch
+    segments: [new_business]
+    primary_segment: new_business
+    usage_note: "Li-S電池正極/電解質"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 616
+        text: "タイヤ材料の硫黄の研究に基づくリチウム硫黄電池の正極材活物質"
+    risk_tags: [チリ/豪/中集中]
+
+  - id: graphene
+    cas: "7782-42-5"
+    name_ja: "グラフェン / 導電性カーボン"
+    name_en: "Graphene / conductive carbon"
+    aliases: [Graphene, グラフェン]
+    status: watch
+    segments: [new_business]
+    primary_segment: new_business
+    usage_note: "Li-S電池正極担持材"
+    evidence_layer: B
+    citations:
+      - source: "業界常識"
+        line: null
+        text: "Li-S電池正極の標準担持材"
+    risk_tags: [研究/量産グレード供給格差]
+
+  - id: cancer_cell_polymer
+    cas: null
+    name_ja: "がん細胞吸着ポリマー"
+    name_en: "Cancer cell adsorption polymer"
+    aliases: [がん細胞吸着ポリマー, 細胞吸着ポリマー]
+    status: watch
+    segments: [new_business]
+    primary_segment: new_business
+    usage_note: "ポリマーの研究に基づくがん細胞吸着キット"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 616
+        text: "ポリマーの研究に基づくがん細胞吸着キット"
+      - source: "統合報告書2025"
+        line: 1841
+        text: "○細胞吸着ポリマー ★2024年 がん検査キット"
+    risk_tags: [医療機器規制]
+
+  - id: 3d_printer_rubber
+    cas: null
+    name_ja: "3Dプリンタ造形用 ゴム/エラストマー材料"
+    name_en: "3D printer rubber/elastomer material"
+    aliases: [3Dプリンタ造形材]
+    status: watch
+    segments: [new_business]
+    primary_segment: new_business
+    usage_note: "ゴム/エラストマー造形用UV硬化アクリレート等"
+    evidence_layer: A
+    citations:
+      - source: "統合報告書2025"
+        line: 616
+        text: "3Dプリンタ造形用ゴム材料"
+      - source: "統合報告書2025"
+        line: 1853
+        text: "○3Dプリンタ造形用材活物質開発"
+    risk_tags: [BASF/Henkel/Carbon等海外寡占]
+
+  - id: automotive_semiconductor
+    cas: null
+    name_ja: "車載半導体・センサ部材 (Viaduct関連)"
+    name_en: "Automotive semiconductor / sensor (Viaduct)"
+    aliases: [車載半導体, Viaduct, センシングコア]
+    status: watch
+    segments: [new_business, tire]
+    primary_segment: new_business
+    usage_note: "センシングコア + AI故障予知のフリート向け展開"
+    evidence_layer: A
+    citations:
+      - source: "有報2025"
+        line: 1346
+        text: "AIを活用した車両故障予知ソリューションサービスを提供する米国のベンチャー企業であるViaduct社（2024年１月に出資）を2025年10月に買収"
+      - source: "有報2025"
+        line: 233
+        text: "Viaduct, Inc.（米国カリフォルニア州、1米ドル）／タイヤ／100.0／データソリューションサービスの提供"
+    risk_tags: [台湾TSMC集中, 輸出管理]

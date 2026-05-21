@@ -1,0 +1,34 @@
+{
+  "tire": {
+    "label": "タイヤ事業",
+    "icon": "🛞",
+    "revenue_jpy_m": 1043683,
+    "revenue_share": 0.865,
+    "business_profit_jpy_m": 79812,
+    "description": "自動車用・産業車両用・モーターサイクル用タイヤ、パンク応急修理剤"
+  },
+  "sports": {
+    "label": "スポーツ事業",
+    "icon": "🏌",
+    "revenue_jpy_m": 125574,
+    "revenue_share": 0.104,
+    "business_profit_jpy_m": 6831,
+    "description": "ゴルフクラブ・ボール、テニス用品"
+  },
+  "industrial": {
+    "label": "産業品他事業",
+    "icon": "🏭",
+    "revenue_jpy_m": 37804,
+    "revenue_share": 0.031,
+    "business_profit_jpy_m": null,
+    "description": "制振ダンパー、医療用ゴム、防舷材、人工芝、ゴム手袋、OA機器用ゴム"
+  },
+  "new_business": {
+    "label": "新規事業候補",
+    "icon": "🚀",
+    "revenue_jpy_m": 0,
+    "revenue_share": 0.0,
+    "business_profit_jpy_m": null,
+    "description": "リチウム硫黄電池正極、がん細胞吸着ポリマー、3Dプリンタ造形用材、Viaduct AI"
+  }
+}
