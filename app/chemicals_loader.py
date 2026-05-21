@@ -157,10 +157,13 @@ def synonyms_for_search(cas: str) -> list[str]:
     legacy = _legacy_materials_by_cas().get(cas, {})
     chem = get_chemical(cas)
     out: list[str] = []
-    out.extend(legacy.get("capacity_keywords") or [])
+    for k in legacy.get("capacity_keywords") or []:
+        if isinstance(k, str) and k.strip() and k not in out:
+            out.append(k.strip())
     if chem:
         for k in ("name_en", "top_synonym", "iupac_name"):
             v = chem.get(k)
-            if v and v not in out:
-                out.append(v)
+            # parquet→dict converts NaN to float('nan') which is truthy — must check type
+            if isinstance(v, str) and v.strip() and v not in out:
+                out.append(v.strip())
     return out
