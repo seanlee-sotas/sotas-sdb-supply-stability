@@ -17,7 +17,7 @@ import duckdb
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "app"))
-import gemini_client as gc
+import gemini_client as gemini  # avoid stdlib `gc` collision
 
 ROOT = Path(__file__).resolve().parents[2]
 CHEM_P = ROOT / "data" / "chemicals" / "chemicals.parquet"
@@ -85,7 +85,7 @@ SCHEMA = {
 
 
 def main():
-    if not gc.is_available():
+    if not gemini.is_available():
         print("Gemini API key not configured. See app/gemini_client.py.", file=sys.stderr)
         sys.exit(1)
     con = duckdb.connect()
@@ -111,7 +111,7 @@ def main():
         total_n = (len(todo) + BATCH_SIZE - 1) // BATCH_SIZE
         print(f"  [{n}/{total_n}] batch CAS {batch.iloc[0]['cas']} … {batch.iloc[-1]['cas']}")
         try:
-            result = gc.chat(prompt, model=MODEL, json_schema=SCHEMA, max_output_tokens=12000)
+            result = gemini.chat(prompt, model=MODEL, json_schema=SCHEMA, max_output_tokens=12000)
         except RuntimeError as e:
             print(f"    FAILED: {e}")
             continue

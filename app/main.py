@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import chemicals_loader as cl  # noqa: E402
 import scoring  # noqa: E402
 import scoring_llm  # noqa: E402
-import gemini_client as gc  # noqa: E402
+import gemini_client as gemini  # noqa: E402 (avoid stdlib `gc` collision)
 
 ACCENT = "#0F766E"
 ACCENT_LIGHT = "#5EEAD4"
@@ -1537,7 +1537,7 @@ def render_score():
 
     # --- Narrative review ---
     st.markdown("### 📝 総評")
-    llm_available = gc.is_available()
+    llm_available = gemini.is_available()
     if llm_available:
         col_a, col_b = st.columns([4, 1])
         with col_b:

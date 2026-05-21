@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import chemicals_loader as cl
-import gemini_client as gc
+import gemini_client as gemini  # avoid stdlib `gc` collision
 import scoring
 
 MODEL = "gemini-2.5-flash-lite"  # 250 RPD free tier vs 20 RPD on plain flash
@@ -55,7 +55,7 @@ PROMPT_TEMPLATE = """\
 
 def llm_narrative(chem: dict, sub_scores: dict[str, dict], comp: dict) -> str:
     """Generate narrative via Gemini. Falls back to rule-based on any error."""
-    if not gc.is_available():
+    if not gemini.is_available():
         return scoring.narrative(chem, sub_scores, comp)
 
     name = chem.get("display_name") or chem["cas"]
@@ -93,7 +93,7 @@ def llm_narrative(chem: dict, sub_scores: dict[str, dict], comp: dict) -> str:
         composite_text=composite_text,
     )
     try:
-        text = gc.chat(prompt, model=MODEL, max_output_tokens=1500, temperature=0.4)
+        text = gemini.chat(prompt, model=MODEL, max_output_tokens=1500, temperature=0.4)
         return text.strip()
     except RuntimeError as e:
         return scoring.narrative(chem, sub_scores, comp) + f"\n\n_(Gemini LLM失敗、ルールベースに fallback: {e})_"
