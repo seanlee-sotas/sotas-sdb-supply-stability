@@ -444,6 +444,80 @@ def _render_disruption_subtab(source_id: str, parquet_path, *, columns, classifi
                 st.success("✅ 直近の分類結果に HIGH 供給関連イベントなし")
 
 
+def _load_axis6_classified() -> pd.DataFrame:
+    """Union all axis6_classified parquets into a single dataframe with source label."""
+    from glob import glob
+    files = sorted(glob(str(AXIS6_CLS_DIR / "*_classified_*.parquet")))
+    if not files:
+        return pd.DataFrame()
+    # Take the latest file per source name
+    latest_per_source: dict[str, str] = {}
+    for f in files:
+        # filename: <source>_classified_YYYYMMDD.parquet → extract source
+        stem = Path(f).stem
+        source = stem.rsplit("_classified_", 1)[0]
+        latest_per_source[source] = f  # later wins (sorted)
+    dfs = []
+    for source, f in latest_per_source.items():
+        df = pd.read_parquet(f)
+        if "source" not in df.columns:
+            df["source"] = source
+        dfs.append(df)
+    if not dfs:
+        return pd.DataFrame()
+    return pd.concat(dfs, ignore_index=True)
+
+
+def _enrich_with_origin(df_cls: pd.DataFrame) -> pd.DataFrame:
+    """Join classification rows back to their origin source rows to recover company / date metadata."""
+    if df_cls.empty:
+        return df_cls
+    out_rows = []
+    source_to_origin = {
+        "edinet_extraordinary": (latest_parquet(EDINET_EXTRA_DIR, "extraordinary_reports"), "doc_id", ["submit_date", "company", "industry", "viewer_url"]),
+        "dart_major_matters":   (latest_parquet(DART_DIR, "dart_major_matters"), "rcept_no", ["rcept_dt", "corp_name", "industry", "viewer_url"]),
+        "tdnet_disclosure":     (latest_parquet(TDNET_DIR, "tdnet_disclosure"), "pdf_url", ["date", "company", "industry", "pdf_url"]),
+        "twse_material_info":   (latest_parquet(TWSE_DIR, "twse_material_info"), "subject", ["filing_date", "company_name", "market"]),
+    }
+    by_source = {s: latest for s, (latest, *_rest) in source_to_origin.items() if latest is not None}
+    # Cache origin dataframes per source
+    origin_dfs: dict[str, pd.DataFrame] = {}
+    for s, (p, _, _) in source_to_origin.items():
+        if p is not None:
+            try:
+                origin_dfs[s] = pd.read_parquet(p)
+            except Exception:
+                pass
+
+    for _, r in df_cls.iterrows():
+        meta = {"_date": "", "_company": "", "_industry": "", "_url": ""}
+        s = r["source"]
+        if s in source_to_origin and s in origin_dfs:
+            _, id_col, cols = source_to_origin[s]
+            odf = origin_dfs[s]
+            match = odf[odf[id_col].astype(str) == str(r["source_id"])]
+            if len(match):
+                m = match.iloc[0]
+                if s == "edinet_extraordinary":
+                    meta = {"_date": m["submit_date"], "_company": m["company"], "_industry": m["industry"], "_url": m["viewer_url"]}
+                elif s == "dart_major_matters":
+                    meta = {"_date": m["rcept_dt"], "_company": m["corp_name"], "_industry": m["industry"], "_url": m["viewer_url"]}
+                elif s == "tdnet_disclosure":
+                    meta = {"_date": m["date"], "_company": m["company"], "_industry": m["industry"], "_url": m["pdf_url"]}
+                elif s == "twse_material_info":
+                    meta = {"_date": m["filing_date"], "_company": m["company_name"], "_industry": m["market"], "_url": ""}
+        out_rows.append({**r.to_dict(), **meta})
+    return pd.DataFrame(out_rows)
+
+
+SOURCE_FLAG = {
+    "edinet_extraordinary": "🇯🇵 EDINET",
+    "tdnet_disclosure":     "🇯🇵 TDnet",
+    "dart_major_matters":   "🇰🇷 DART",
+    "twse_material_info":   "🇹🇼 TWSE",
+}
+
+
 # ---------- tab 6 ----------
 def render_axis6():
     sec_p = latest_parquet(SEC_DIR, "filings_8k")
@@ -456,6 +530,55 @@ def render_axis6():
         "Item 8.01 (Other Events) と Item 2.06 (Material Impairments) が FM 発令・大規模事故・撤退の主な箱。"
         "出現頻度がその企業/業界のオペレーションリスクの粗い代理指標。"
     )
+
+    # === A: 5ソース横断 HIGH/MED 統合ビュー (最上段) ===
+    st.markdown("## 🚨 5ソース横断 HIGH/MED イベント (最新)")
+    df_cls_all = _load_axis6_classified()
+    if df_cls_all.empty:
+        st.info("LLM分類済データなし。`ingest/disruption_classify.py` 実行 (各ソース ~120件)")
+    else:
+        hm_all = df_cls_all[df_cls_all["supply_relevance"].isin(["HIGH", "MED"])].copy()
+        hm_all = _enrich_with_origin(hm_all)
+        if hm_all.empty:
+            st.success("✅ 直近の HIGH/MED 供給関連イベントなし (4ソース全体)")
+        else:
+            # Metrics row
+            high = hm_all[hm_all["supply_relevance"] == "HIGH"]
+            med = hm_all[hm_all["supply_relevance"] == "MED"]
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            mc1.metric("🚨 HIGH", len(high), help="操業停止/火災/災害損害/リコール等")
+            mc2.metric("⚠️ MED", len(med), help="事業譲渡/訴訟/規制違反")
+            mc3.metric("ソース数", hm_all["source"].nunique())
+            mc4.metric("企業数", hm_all["_company"].nunique())
+
+            # Source filter
+            cols_f = st.columns([2, 1, 1])
+            with cols_f[0]:
+                src_pick = st.multiselect(
+                    "ソース",
+                    list(SOURCE_FLAG.keys()),
+                    default=list(SOURCE_FLAG.keys()),
+                    format_func=lambda s: SOURCE_FLAG.get(s, s),
+                    key="axis6_top_src",
+                )
+            with cols_f[1]:
+                sev_pick = st.multiselect(
+                    "重要度",
+                    ["HIGH", "MED"],
+                    default=["HIGH", "MED"],
+                    key="axis6_top_sev",
+                )
+            with cols_f[2]:
+                limit_pick = st.selectbox("表示件数", [50, 100, 200, 500], index=1, key="axis6_top_limit")
+
+            view = hm_all[hm_all["source"].isin(src_pick) & hm_all["supply_relevance"].isin(sev_pick)].copy()
+            view["旗"] = view["source"].map(lambda s: SOURCE_FLAG.get(s, s))
+            view = view.sort_values("_date", ascending=False).head(limit_pick)
+            view_disp = view[["_date", "旗", "supply_relevance", "event_type", "_company", "_industry", "summary_ja", "_url"]].copy()
+            view_disp.columns = ["日付", "ソース", "重要度", "Event", "企業", "業種", "要約", "リンク"]
+            st.dataframe(view_disp, use_container_width=True, hide_index=True, height=420)
+
+    st.divider()
 
     if sec_p is None:
         st.error("`data/sec/filings_8k_*.parquet` なし。`uv run python ingest/sec_8k.py` 実行。")
