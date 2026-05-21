@@ -4,12 +4,22 @@ import json
 import sys
 from pathlib import Path
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import sumitomo_loader as sl  # noqa: E402
 import scoring  # noqa: E402
+
+
+def _val(v):
+    """Return None when v is None or NaN; else return v unchanged."""
+    if v is None:
+        return None
+    if isinstance(v, float) and pd.isna(v):
+        return None
+    return v
 
 st.set_page_config(
     page_title="物質詳細 | SDB Mock",
@@ -74,6 +84,12 @@ if m is None:
 # -----------------------------------------------------------------------------
 # ヘッダ: 物質基本情報
 # -----------------------------------------------------------------------------
+
+# pandas DataFrame → dict は None を NaN に変換するため、表示前にクリーンアップ
+for k in ("cas", "pubchem_cid", "iupac_name", "molecular_formula", "molecular_weight",
+          "inchikey", "smiles", "category_norm", "hs6", "hs_label", "usage_note",
+          "name_en", "risk_tags"):
+    m[k] = _val(m.get(k))
 
 layer = layers[m["evidence_layer"]]
 seg = segments[m["primary_segment"]]
