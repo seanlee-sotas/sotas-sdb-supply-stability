@@ -944,182 +944,36 @@ def render_axis6():
 
 # ---------- tab 1 ----------
 def render_axis1():
-    p = latest_parquet(EDINET_DIR, "capacity_snippets")
-
     st.info(
-        "**軸1「生産能力・新増設」** | "
-        "化学系443社の有報・統合報告書・中期経営計画から「生産能力」「年産」「設備能力」等のキーワード周辺テキストを抽出。"
-        "現在は**スニペット索引**段階。構造化（製品×工場×年間能力 表化）はLLM抽出を別ステップで予定。"
+        "**軸1「生産能力・新増設」** | EDINET 有報・統合報告書・中計から「生産能力／設備能力／年産」"
+        "等のキーワード周辺snippetを抽出。LLM構造化で製品×工場×能力テーブル化済。"
     )
     st.warning(
-        "⚠️ **このタブは「企業ごとの生産能力言及量」の粗い proxy です。**　"
-        "個別化学品 (CAS) 粒度ではありません — スニペットの抽出トリガーが化学品名ではなく一般キーワード "
-        "（生産能力／設備能力／年産）なので、特定物質にはひもづいていません。"
-        "個別物質ベースの軸1は Phase B (JA alias生成 + product紐付け) で対応予定。"
+        "⚠️ **個別物質 (CAS) 粒度の評価は現状未対応** — スニペット抽出トリガーが化学品名でなく"
+        "一般キーワードのため。Phase B (JA alias生成 + product紐付け) まで生データのみ公開。"
     )
-    if p is None:
-        st.error("`data/edinet/capacity_snippets_*.parquet` なし。`uv run python ingest/edinet_capacity.py` 実行。")
-        return
-
-    con = duckdb.connect(":memory:")
-    con.execute(f"CREATE VIEW snip AS SELECT * FROM '{p}'")
-    total = con.execute("SELECT COUNT(*) FROM snip").fetchone()[0]
-    companies = con.execute("SELECT COUNT(DISTINCT company) FROM snip").fetchone()[0]
-    doctypes = con.execute("SELECT COUNT(DISTINCT doctype) FROM snip").fetchone()[0]
-    st.caption(f"データ: `{p.name}` ({total:,} snippets, {companies} companies, {doctypes} doctypes)")
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("スニペット総数", f"{total:,}")
-    c2.metric("企業数（言及あり）", companies)
-    c3.metric("文書種類", doctypes)
-
-    st.markdown("**文書種別の内訳**")
-    dt = con.execute("SELECT doctype, COUNT(*) AS cnt FROM snip GROUP BY doctype ORDER BY cnt DESC").df()
-    st.bar_chart(dt.set_index("doctype")["cnt"], height=240)
-
-    st.markdown("**スニペット数 Top 20 企業（生産能力に関する記述が多い ＝ 投資・再編が活発）**")
-    top_co = con.execute("SELECT company, COUNT(*) AS cnt FROM snip GROUP BY company ORDER BY cnt DESC LIMIT 20").df()
-    st.bar_chart(top_co.set_index("company")["cnt"], height=320)
-
     st.divider()
-    st.markdown("**スニペット閲覧**")
-    co_list = con.execute("SELECT DISTINCT company FROM snip ORDER BY company").df()["company"].tolist()
-    chosen = st.selectbox("企業", co_list, key="ax1_co")
-    snips = con.execute(
-        """SELECT period, doctype, snippet, file_path FROM snip WHERE company = ?
-           ORDER BY period DESC, doctype""",
-        [chosen],
-    ).df()
-    if snips.empty:
-        st.info("該当データなし")
-    else:
-        for _, r in snips.iterrows():
-            with st.expander(f"[{r['period']}] {r['doctype']} — {r['snippet'][:80]}..."):
-                st.markdown(f"> {r['snippet']}")
-                st.caption(f"出典: `{r['file_path']}`")
-
-    st.divider()
-    st.markdown("### 📂 ソース生データ — 軸1 生産能力・新増設")
-    source_inspector.render_source("edinet_snippets", p)
+    st.markdown("### 📂 ソース生データ")
+    p = latest_parquet(EDINET_DIR, "capacity_snippets")
     structured_p = latest_parquet(EDINET_DIR, "capacity_structured")
+    source_inspector.render_source("edinet_snippets", p)
     source_inspector.render_source("edinet_structured", structured_p)
 
 
 # ---------- tab 7 ----------
 def render_axis7():
-    p = latest_parquet(WB_DIR, "prices_monthly")
-
     st.info(
         "**軸7「価格変動性」** | World Bank Pink Sheet 月次商品価格（1960年〜現在）。"
-        "ゴム TSR20/RSS3、原油（Brent/WTI/Dubai）、天然ガス（JP/EU/US）、ベース金属など、"
-        "rubber/tire/petchem 関連の主要15品目で月次ボラティリティと長期トレンドを可視化。"
+        "ゴム TSR20/RSS3、原油、天然ガス、ベース金属など 15品目のみ。"
     )
-
-    if p is None:
-        st.error("`data/worldbank/prices_monthly_*.parquet` なし。`uv run python ingest/worldbank_prices.py` 実行。")
-        return
-
-    con = duckdb.connect(":memory:")
-    con.execute(f"CREATE VIEW prices AS SELECT * FROM '{p}'")
-    total = con.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
-    commodities = con.execute("SELECT COUNT(DISTINCT commodity) FROM prices").fetchone()[0]
-    drange = con.execute("SELECT MIN(date), MAX(date) FROM prices").fetchone()
-    st.caption(f"データ: `{p.name}` ({total:,} rows, {commodities} commodities, {drange[0].date()}〜{drange[1].date()})")
-
-    co_list = con.execute("SELECT DISTINCT commodity, name FROM prices ORDER BY commodity").df()
-    co_map = dict(zip(co_list["commodity"], co_list["name"]))
-    selected = st.selectbox(
-        "商品",
-        co_list["commodity"].tolist(),
-        format_func=lambda c: f"{co_map.get(c, c)} ({c})",
-        index=co_list["commodity"].tolist().index("RUBBER_TSR20") if "RUBBER_TSR20" in co_map else 0,
-        key="ax7_co",
+    st.warning(
+        "⚠️ **個別化学品 (CAS) 粒度の評価は現状未対応** — 15品目のみで、"
+        "化学品マスタ469中のごく一部しかカバーしていない。NYMEX/EIA/JCN等の価格ソース追加 + "
+        "CAS→commodity マッピング充実までは生データのみ公開。"
     )
-
-    years_back = st.slider("表示期間（年）", 1, 30, 10, key="ax7_years")
-
-    cutoff = pd.Timestamp.now() - pd.DateOffset(years=years_back)
-    df = con.execute(
-        """SELECT date, price, unit FROM prices
-           WHERE commodity = ? AND date >= ?
-           ORDER BY date""",
-        [selected, cutoff],
-    ).df()
-
-    if df.empty:
-        st.warning("該当データなし。")
-        return
-
-    unit = df["unit"].iloc[0]
-    df["yoy_pct"] = df["price"].pct_change(12) * 100
-    df["rolling_vol_12m"] = df["price"].pct_change().rolling(12).std() * (12 ** 0.5) * 100  # annualized vol %
-
-    latest_p = df.iloc[-1]["price"]
-    latest_yoy = df.iloc[-1]["yoy_pct"]
-    avg_vol = df["rolling_vol_12m"].dropna().mean()
-    max_p = df["price"].max()
-    min_p = df["price"].min()
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("直近価格", f"{latest_p:,.2f} {unit}")
-    c2.metric("YoY 変化", f"{latest_yoy:+.1f}%" if pd.notna(latest_yoy) else "—")
-    c3.metric("年率ボラティリティ平均", f"{avg_vol:.1f}%", help="12ヶ月rolling, 月次リターンの年率化標準偏差")
-    c4.metric("レンジ", f"{min_p:.2f} – {max_p:.2f}")
-
-    st.subheader(f"{co_map.get(selected, selected)} — 月次価格推移")
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df["date"], y=df["price"], mode="lines", name="価格",
-        line=dict(color=ACCENT, width=2),
-        hovertemplate=f"<b>%{{x|%Y-%m}}</b><br>%{{y:,.2f}} {unit}<extra></extra>",
-    ))
-    fig.update_yaxes(title=unit)
-    st.plotly_chart(styled_fig(fig, height=340), use_container_width=True)
-
-    col_yoy, col_vol = st.columns(2)
-    with col_yoy:
-        st.markdown("**YoY 変化率（前年同月比）**")
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df["date"], y=df["yoy_pct"], mode="lines",
-            line=dict(color=ACCENT, width=2), fill="tozeroy",
-            fillcolor="rgba(15,118,110,0.15)",
-            hovertemplate="<b>%{x|%Y-%m}</b><br>%{y:+.1f}%<extra></extra>",
-        ))
-        fig.add_hline(y=0, line_color=MUTED, line_width=1)
-        fig.update_yaxes(title="%", ticksuffix="%")
-        st.plotly_chart(styled_fig(fig, height=260), use_container_width=True)
-    with col_vol:
-        st.markdown("**年率ボラティリティ（12ヶ月rolling）**")
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df["date"], y=df["rolling_vol_12m"], mode="lines",
-            line=dict(color="#7C3AED", width=2),
-            hovertemplate="<b>%{x|%Y-%m}</b><br>vol: %{y:.1f}%<extra></extra>",
-        ))
-        fig.update_yaxes(title="%", ticksuffix="%", rangemode="tozero")
-        st.plotly_chart(styled_fig(fig, height=260), use_container_width=True)
-
     st.divider()
-    st.subheader("全商品の直近YoY変化率")
-    latest = con.execute(
-        """WITH ranked AS (
-             SELECT commodity, name, date, price,
-                    LAG(price, 12) OVER (PARTITION BY commodity ORDER BY date) AS price_12m_ago,
-                    ROW_NUMBER() OVER (PARTITION BY commodity ORDER BY date DESC) AS rn
-             FROM prices
-           )
-           SELECT name, commodity, date, price,
-                  (price / price_12m_ago - 1) * 100 AS yoy_pct
-           FROM ranked WHERE rn = 1 ORDER BY yoy_pct DESC NULLS LAST"""
-    ).df()
-    latest["price"] = latest["price"].map(lambda v: f"{v:,.2f}")
-    latest["yoy_pct"] = latest["yoy_pct"].map(lambda v: f"{v:+.1f}%" if pd.notna(v) else "—")
-    latest["date"] = latest["date"].astype(str).str[:10]
-    latest.columns = ["商品", "コード", "直近月", "価格", "YoY"]
-    st.dataframe(latest, use_container_width=True, hide_index=True)
-
-    st.divider()
+    st.markdown("### 📂 ソース生データ")
+    p = latest_parquet(WB_DIR, "prices_monthly")
     source_inspector.render_source("wb_prices", p)
 
 
@@ -1336,74 +1190,18 @@ def render_axis2():
 
 # ---------- tab 3 ----------
 def render_axis3():
-    p = latest_parquet(SUPPLIER_DIR, "jp_supplier_count")
-
     st.info(
         "**軸3「サプライヤー集中度」(proxy)** | "
-        "本格的なHHIには各社の生産能力数値が必要だが、EDINET XBRLでは構造化されていない。"
-        "暫定proxy: 「素材名を有報/中計/サステナレポートで言及している」JP上場企業の数を数え、"
-        "「3社以下＝高集中」「4-10社＝中集中」「11社以上＝低集中」の3バンドで色分け。"
-        "国内供給多様性のラフな代理指標として、軸4（global集中度）と組み合わせて読む。"
+        "EDINET 言及数ベースで国内サプライヤー数を数え、3バンドで色分けした暫定指標。"
     )
-
-    if p is None:
-        st.error("`data/supplier/jp_supplier_count_*.parquet` なし。`uv run python ingest/supplier_concentration.py` 実行。")
-        return
-
-    df = pd.read_parquet(p)
-    st.caption(f"データ: `{p.name}` ({len(df)} materials, JP-listed chemical universe 385社が母集団)")
-
-    BAND_LABEL = {
-        "high_concentration": "🔴 高集中 (3社以下)",
-        "moderate_concentration": "🟡 中集中 (4-10社)",
-        "low_concentration": "🟢 低集中 (11社以上)",
-        "no_data": "⚪ データなし",
-    }
-    BAND_ORDER = ["high_concentration", "moderate_concentration", "low_concentration", "no_data"]
-
-    counts = df["concentration_band"].value_counts().reindex(BAND_ORDER, fill_value=0)
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("🔴 高集中", counts["high_concentration"], help="JP上場サプライヤー≤3社の素材数")
-    c2.metric("🟡 中集中", counts["moderate_concentration"])
-    c3.metric("🟢 低集中", counts["low_concentration"])
-    c4.metric("⚪ データなし", counts["no_data"])
-
-    st.markdown("**🔴 高集中素材リスト（国内供給リスク要監視）**")
-    high = df[df["concentration_band"] == "high_concentration"].sort_values("jp_supplier_count")
-    if not high.empty:
-        disp = high[["name_ja", "category", "jp_supplier_count", "top_companies"]].copy()
-        disp.columns = ["素材", "カテゴリ", "JPサプライヤー数", "Top企業"]
-        st.dataframe(disp, use_container_width=True, hide_index=True)
-    else:
-        st.success("高集中素材なし")
-
-    st.markdown("**全素材ランキング (JP上場サプライヤー数の昇順)**")
-    sorted_df = df.sort_values("jp_supplier_count")
-    sorted_df["band_label"] = sorted_df["concentration_band"].map(BAND_LABEL)
-    fig = px.bar(
-        sorted_df,
-        x="jp_supplier_count", y="name_ja", orientation="h",
-        color="concentration_band",
-        color_discrete_map={
-            "high_concentration": DANGER,
-            "moderate_concentration": "#F59E0B",
-            "low_concentration": "#10B981",
-            "no_data": MUTED,
-        },
-        hover_data={"top_companies": True, "concentration_band": False, "name_ja": False},
-        labels={"jp_supplier_count": "JP上場サプライヤー数", "name_ja": ""},
+    st.warning(
+        "⚠️ **17ピン留め素材のみ対応**。化学品マスタ 469 物質中の 3.6% しかカバーしてない上、"
+        "「言及あり = サプライヤー」という仮定の精度も粗い。本格 HHI は各社生産能力数値が必要だが"
+        "EDINET XBRL では構造化されていない。Phase 2 で拡張までは生データのみ公開。"
     )
-    fig.update_layout(showlegend=False)
-    st.plotly_chart(styled_fig(fig, height=520), use_container_width=True)
-
-    with st.expander("全データ"):
-        disp = df.copy()
-        disp["band_label"] = disp["concentration_band"].map(BAND_LABEL)
-        disp = disp[["name_ja", "name_en", "category", "jp_supplier_count", "band_label", "top_companies"]]
-        disp.columns = ["素材", "英名", "カテゴリ", "サプライヤー数", "集中度バンド", "Top企業"]
-        st.dataframe(disp, use_container_width=True, hide_index=True)
-
     st.divider()
+    st.markdown("### 📂 ソース生データ")
+    p = latest_parquet(SUPPLIER_DIR, "jp_supplier_count")
     source_inspector.render_source("jp_supplier", p)
 
 
