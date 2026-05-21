@@ -445,27 +445,45 @@ def _render_disruption_subtab(source_id: str, parquet_path, *, columns, classifi
 
 
 def _load_axis6_classified() -> pd.DataFrame:
-    """Union all axis6_classified parquets into a single dataframe with source label."""
+    """Union all axis6_classified parquets + SEC item801_classified into a single
+    dataframe with normalised columns (source, source_id, event_type, summary_ja,
+    supply_relevance, key_facility, key_product)."""
     from glob import glob
+    dfs = []
+
+    # 1. JP/KR/TW: data/axis6_classified/<source>_classified_*.parquet
     files = sorted(glob(str(AXIS6_CLS_DIR / "*_classified_*.parquet")))
-    if not files:
-        return pd.DataFrame()
-    # Take the latest file per source name
     latest_per_source: dict[str, str] = {}
     for f in files:
-        # filename: <source>_classified_YYYYMMDD.parquet → extract source
         stem = Path(f).stem
         source = stem.rsplit("_classified_", 1)[0]
-        latest_per_source[source] = f  # later wins (sorted)
-    dfs = []
+        latest_per_source[source] = f
     for source, f in latest_per_source.items():
         df = pd.read_parquet(f)
         if "source" not in df.columns:
             df["source"] = source
         dfs.append(df)
+
+    # 2. SEC item801_classified (separate parquet, slightly different schema)
+    sec_cls_p = latest_parquet(SEC_DIR, "item801_classified")
+    if sec_cls_p is not None:
+        sec_df = pd.read_parquet(sec_cls_p)
+        # Normalise to common schema
+        sec_norm = pd.DataFrame({
+            "source_id": sec_df["accession"].astype(str),
+            "source": "sec_8k_item801",
+            "event_type": sec_df["event_type"],
+            "summary_ja": sec_df["summary_ja"],
+            "supply_relevance": sec_df["supply_relevance"],
+            "key_facility": sec_df.get("key_facility", ""),
+            "key_product": sec_df.get("key_product", ""),
+            "_classified_at": sec_df.get("_classified_at", ""),
+        })
+        dfs.append(sec_norm)
+
     if not dfs:
         return pd.DataFrame()
-    return pd.concat(dfs, ignore_index=True)
+    return pd.concat(dfs, ignore_index=True, sort=False)
 
 
 def _enrich_with_origin(df_cls: pd.DataFrame) -> pd.DataFrame:
@@ -478,6 +496,8 @@ def _enrich_with_origin(df_cls: pd.DataFrame) -> pd.DataFrame:
         "dart_major_matters":   (latest_parquet(DART_DIR, "dart_major_matters"), "rcept_no", ["rcept_dt", "corp_name", "industry", "viewer_url"]),
         "tdnet_disclosure":     (latest_parquet(TDNET_DIR, "tdnet_disclosure"), "pdf_url", ["date", "company", "industry", "pdf_url"]),
         "twse_material_info":   (latest_parquet(TWSE_DIR, "twse_material_info"), "subject", ["filing_date", "company_name", "market"]),
+        # SEC: item801_classified already contains all metadata, but join via accession for consistency
+        "sec_8k_item801":       (latest_parquet(SEC_DIR, "item801_classified"), "accession", ["filing_date", "company_name", "ticker", "accession_url"]),
     }
     by_source = {s: latest for s, (latest, *_rest) in source_to_origin.items() if latest is not None}
     # Cache origin dataframes per source
@@ -506,6 +526,8 @@ def _enrich_with_origin(df_cls: pd.DataFrame) -> pd.DataFrame:
                     meta = {"_date": m["date"], "_company": m["company"], "_industry": m["industry"], "_url": m["pdf_url"]}
                 elif s == "twse_material_info":
                     meta = {"_date": m["filing_date"], "_company": m["company_name"], "_industry": m["market"], "_url": ""}
+                elif s == "sec_8k_item801":
+                    meta = {"_date": str(m.get("filing_date", "")), "_company": m.get("company_name", ""), "_industry": "米化学", "_url": m.get("accession_url", "")}
         out_rows.append({**r.to_dict(), **meta})
     return pd.DataFrame(out_rows)
 
@@ -515,6 +537,7 @@ SOURCE_FLAG = {
     "tdnet_disclosure":     "🇯🇵 TDnet",
     "dart_major_matters":   "🇰🇷 DART",
     "twse_material_info":   "🇹🇼 TWSE",
+    "sec_8k_item801":       "🇺🇸 SEC 8-K",
 }
 
 CHEMICALS_COMPANY_MAP_P = ROOT / "data" / "chemicals" / "chemicals_company_map.parquet"
@@ -616,8 +639,8 @@ def render_axis6():
         "出現頻度がその企業/業界のオペレーションリスクの粗い代理指標。"
     )
 
-    # === A: 5ソース横断 HIGH/MED 統合ビュー (最上段) ===
-    st.markdown("## 🚨 5ソース横断 HIGH/MED イベント (最新)")
+    # === A: 6ソース横断 HIGH/MED 統合ビュー (最上段) ===
+    st.markdown("## 🚨 6ソース横断 HIGH/MED イベント (最新)")
     df_cls_all = _load_axis6_classified()
     if df_cls_all.empty:
         st.info("LLM分類済データなし。`ingest/disruption_classify.py` 実行 (各ソース ~120件)")
