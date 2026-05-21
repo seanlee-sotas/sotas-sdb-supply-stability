@@ -356,7 +356,7 @@ def render_source(
         mtime = 0.0
 
     with st.expander(f"📂 ソース生データ — {meta['title']}", expanded=expanded):
-        # --- source attribution (cheap, render first) ---
+        # --- source attribution (cheap markdown only) ---
         st.markdown(
             f"**出典:** [{meta['source_url']}]({meta['source_url']})  \n"
             f"**ライセンス:** {meta['license']}  \n"
@@ -365,17 +365,22 @@ def render_source(
             f"**利用軸:** {', '.join(meta['axes'])}"
         )
 
-        # --- column dictionary (no IO) ---
-        _render_column_dict(meta)
-
-        # --- gated heavy work: file meta + preview + CSV ---
+        # --- gated heavy work: column dict + file meta + preview + CSV ---
+        # Streamlit renders expander contents eagerly, so multiple dataframes
+        # in render_cross() / axis tabs slow first paint. Gate behind button.
         load_key = f"load_{dataset_id}_{parquet_path.name}"
-        st.caption("⚠️ ファイルメタ / プレビュー / CSV は下のボタンで読み込みます (大きい parquet 対策)。")
-        if st.button("📊 メタ + プレビューを読み込む", key=load_key):
-            st.session_state[load_key + "_loaded"] = True
-
         if not st.session_state.get(load_key + "_loaded"):
+            if st.button(
+                "📋 カラム定義 + プレビューを表示",
+                key=load_key,
+                help="クリックでカラム定義表・先頭50行・CSVダウンロードを読み込みます",
+            ):
+                st.session_state[load_key + "_loaded"] = True
+                st.rerun()
             return
+
+        # --- column dictionary (only after click) ---
+        _render_column_dict(meta)
 
         try:
             size_h, rows, mtime_str = _file_meta(path_str, mtime)

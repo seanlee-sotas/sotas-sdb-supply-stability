@@ -1166,19 +1166,10 @@ def render_cross():
         st.info("検索キーワード生成不可（物質名なし）")
 
     st.divider()
-    st.markdown("### 📂 ソース生データ（本物質に紐づく全データセット）")
     st.caption(
-        "下記の expander を開くと、原典 parquet のカラム定義・プレビュー・CSV ダウンロードができます。"
-        "本物質に絞り込まれたビューではなく、各データセットの全体像です。"
+        "📂 各軸の原典 parquet（カラム定義・プレビュー・CSV ダウンロード）は、"
+        "上部の各「軸N」タブ末尾の「📂 ソース生データ」セクションから開けます。"
     )
-    source_inspector.render_source("chemicals_master", cl.CHEM_P)
-    source_inspector.render_source("chemicals_hs_map", cl.HS_MAP_P)
-    source_inspector.render_source("comtrade_trade", trade_p)
-    source_inspector.render_source("echa_svhc", svhc_p)
-    source_inspector.render_source("pops", pops_p)
-    source_inspector.render_source("sec_8k", sec_p)
-    source_inspector.render_source("wb_prices", wb_p)
-    source_inspector.render_source("edinet_snippets", edinet_p)
 
 
 # ---------- score tab — comparison sub-view ----------
