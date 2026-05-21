@@ -1,0 +1,430 @@
+# 住友ゴム関連物質の上流バリューチェーンマッピング
+# 各物質について「原料モノマー → 石化中間体 → 原油/鉱物」へ遡る系譜
+#
+# 上流ノードのリスクデータ参照先:
+#   cas:           既存物質と同じ CAS (chemicals.parquet + scoring) → 7軸スコア継承
+#   usgs_element:  USGS Mineral Commodity Summaries 2025 の element key
+#   wb_commodity:  World Bank Pink Sheet 商品コード (RUBBER_TSR20, CRUDE_BRENT 等)
+#   strategic_token: 戦略物資 3国フラグの token
+
+chains:
+
+  # ==================== タイヤ事業 基幹 ====================
+
+  ssbr:
+    self:
+      name: "溶液重合SBR (S-SBR)"
+      cas: "9003-55-8"
+      role: "重合体"
+    parents:
+      - name: "1,3-ブタジエン"
+        role: "原料モノマー (60%)"
+        cas: "106-99-0"
+        note: "国内ENEOS/UBE/三菱ケミカル 3社寡占"
+        parents:
+          - name: "ナフサ (粗製ガソリン)"
+            role: "石化中間体"
+            wb_commodity: "CRUDE_BRENT"
+            note: "ナフサクラッカー副生物としてブタジエン生成"
+            parents:
+              - name: "原油"
+                role: "源流"
+                wb_commodity: "CRUDE_BRENT"
+                note: "ホルムズ海峡通過量の30%が日本向け"
+      - name: "スチレン"
+        role: "原料モノマー (40%)"
+        cas: "100-42-5"
+        note: "エチルベンゼン脱水素法"
+        parents:
+          - name: "エチレン + ベンゼン"
+            role: "石化中間体"
+            wb_commodity: "CRUDE_BRENT"
+            note: "ナフサクラッカー基幹品"
+
+  esbr:
+    self:
+      name: "乳化重合SBR (E-SBR)"
+      cas: "9003-55-8"
+      role: "重合体"
+    parents:
+      - name: "1,3-ブタジエン"
+        role: "原料モノマー"
+        cas: "106-99-0"
+      - name: "スチレン"
+        role: "原料モノマー"
+        cas: "100-42-5"
+
+  br:
+    self:
+      name: "ブタジエンゴム (BR)"
+      cas: "9003-17-4"
+      role: "重合体"
+    parents:
+      - name: "1,3-ブタジエン"
+        role: "原料モノマー"
+        cas: "106-99-0"
+
+  butadiene:
+    self:
+      name: "1,3-ブタジエン"
+      cas: "106-99-0"
+      role: "モノマー"
+    parents:
+      - name: "ナフサ"
+        role: "石化中間体"
+        wb_commodity: "CRUDE_BRENT"
+        note: "C4留分をスチーム分解で得る副生物"
+        parents:
+          - name: "原油"
+            role: "源流"
+            wb_commodity: "CRUDE_BRENT"
+
+  styrene:
+    self:
+      name: "スチレン"
+      cas: "100-42-5"
+      role: "モノマー"
+    parents:
+      - name: "エチルベンゼン"
+        role: "中間体"
+        note: "ベンゼン + エチレンのアルキル化"
+        parents:
+          - name: "ベンゼン"
+            role: "BTX 芳香族"
+            wb_commodity: "CRUDE_BRENT"
+          - name: "エチレン"
+            role: "ナフサクラッカー基幹品"
+            wb_commodity: "CRUDE_BRENT"
+
+  carbon_black:
+    self:
+      name: "カーボンブラック"
+      cas: "1333-86-4"
+      role: "補強充填剤"
+    parents:
+      - name: "重質油 / FCC油"
+        role: "原料炭化水素"
+        wb_commodity: "CRUDE_BRENT"
+        note: "原油精製の残渣油 + コールタール由来"
+        parents:
+          - name: "原油"
+            role: "源流"
+            wb_commodity: "CRUDE_BRENT"
+
+  recycled_carbon_black:
+    self:
+      name: "資源循環型カーボンブラック (TOWANOWA)"
+      role: "リサイクルCB"
+    parents:
+      - name: "使用済みタイヤ (再生材料)"
+        role: "リサイクル原料"
+        note: "住友ゴム自社工程ゴム片 + 廃タイヤ粉砕処理品"
+      - name: "三菱ケミカル コークス炉処理"
+        role: "ケミカルリサイクル設備"
+        note: "国内1社依存 (三菱ケミカル)"
+
+  silica_precipitated:
+    self:
+      name: "沈降シリカ"
+      cas: "7631-86-9"
+      role: "補強充填剤"
+    parents:
+      - name: "ケイ酸ナトリウム (水ガラス)"
+        role: "中間体"
+        note: "珪砂 + 水酸化ナトリウムの水熱処理"
+        parents:
+          - name: "珪砂 (シリカ鉱石)"
+            role: "原料鉱物"
+            usgs_element: "Si_metal"
+            note: "珪砂は遍在的だが、高純度品は中国・豪・米に集中"
+
+  rice_husk_silica:
+    self:
+      name: "籾殻由来シリカ"
+      role: "バイオシリカ"
+    parents:
+      - name: "籾殻 (米作副生物)"
+        role: "バイオマス原料"
+        note: "インド・タイ・ベトナム集中 (米作国)"
+
+  zinc_oxide:
+    self:
+      name: "酸化亜鉛 (ZnO)"
+      cas: "1314-13-2"
+      role: "加硫活性剤"
+    parents:
+      - name: "亜鉛 (金属)"
+        role: "原料金属"
+        usgs_element: "Zn"
+        strategic_token: "Zn"
+        note: "USGS 2024: 中国32%・ペルー11%・豪10%"
+        parents:
+          - name: "亜鉛鉱石"
+            role: "原料鉱物"
+            usgs_element: "Zn"
+
+  sulfur:
+    self:
+      name: "硫黄"
+      cas: "7704-34-9"
+      role: "加硫剤"
+    parents:
+      - name: "石油精製副生硫黄"
+        role: "副生品"
+        usgs_element: "S"
+        wb_commodity: "CRUDE_BRENT"
+        note: "脱硫装置副生品。原油精製連動・偏在的"
+        parents:
+          - name: "原油 / 天然ガス"
+            role: "源流"
+            wb_commodity: "CRUDE_BRENT"
+
+  ppd6_antioxidant:
+    self:
+      name: "6PPD (老化防止剤)"
+      cas: "793-24-8"
+      role: "老化防止剤"
+    parents:
+      - name: "4-アミノジフェニルアミン (4-ADPA)"
+        role: "中間体"
+        note: "アニリン + ニトロベンゼンの触媒反応"
+        parents:
+          - name: "アニリン / ベンゼン"
+            role: "石化原料"
+            wb_commodity: "CRUDE_BRENT"
+      - name: "メチル イソブチル ケトン (MIBK)"
+        role: "中間体"
+        note: "アセトン縮合"
+
+  iir_butyl:
+    self:
+      name: "ブチルゴム (IIR)"
+      cas: "9010-85-9"
+      role: "重合体"
+    parents:
+      - name: "イソブチレン"
+        role: "原料モノマー"
+        wb_commodity: "CRUDE_BRENT"
+        note: "FCC装置副生 C4留分のイソブチレン"
+      - name: "イソプレン"
+        role: "原料モノマー (少量)"
+        wb_commodity: "CRUDE_BRENT"
+
+  halobutyl:
+    self:
+      name: "ハロブチル (CIIR/BIIR)"
+      cas: "68441-14-5"
+      role: "重合体"
+    parents:
+      - name: "ブチルゴム (IIR)"
+        role: "前工程ポリマー"
+        cas: "9010-85-9"
+      - name: "塩素 / 臭素"
+        role: "ハロゲン化剤"
+        note: "塩素は塩素ガス、臭素は世界5割が米国アーカンソー州集中"
+
+  bromobutyl:
+    self:
+      name: "ブロモブチル (BIIR)"
+      cas: "68441-14-5"
+      role: "メディカルラバー主原料"
+    parents:
+      - name: "ハロブチル中間体"
+        role: "前工程"
+        cas: "68441-14-5"
+      - name: "臭素"
+        role: "ハロゲン化剤"
+        note: "イスラエル・ヨルダン・中国・米国 寡占。USGS 統計外"
+
+  pet_cord:
+    self:
+      name: "ポリエステル繊維 (PET)"
+      cas: "25038-59-9"
+      role: "繊維"
+    parents:
+      - name: "PTA (テレフタル酸)"
+        role: "原料モノマー"
+        wb_commodity: "CRUDE_BRENT"
+        note: "p-キシレン酸化"
+      - name: "MEG (エチレングリコール)"
+        role: "原料モノマー"
+        wb_commodity: "CRUDE_BRENT"
+        note: "エチレン酸化"
+
+  rpet_cord:
+    self:
+      name: "リサイクルPET由来コード"
+      cas: "25038-59-9"
+      role: "リサイクル繊維"
+    parents:
+      - name: "回収PETボトル"
+        role: "リサイクル原料"
+        note: "飲料向けと競合、価格ボラ大"
+      - name: "PET ( virgin )"
+        role: "比較対象"
+        cas: "25038-59-9"
+
+  # ==================== スポーツ事業 ====================
+
+  tpu_urethane:
+    self:
+      name: "ポリウレタン (TPU カバー)"
+      cas: "9009-54-5"
+      role: "重合体"
+    parents:
+      - name: "MDI / TDI (イソシアネート)"
+        role: "原料モノマー"
+        wb_commodity: "CRUDE_BRENT"
+        note: "アニリン / トルエン経由、輸出規制動向あり"
+      - name: "ポリオール"
+        role: "原料モノマー"
+        wb_commodity: "CRUDE_BRENT"
+        note: "プロピレンオキサイド由来"
+
+  bio_polyol_corn:
+    self:
+      name: "バイオポリオール (トウモロコシ由来)"
+      role: "バイオモノマー"
+    parents:
+      - name: "デキストロース / グリセリン"
+        role: "中間体"
+        note: "トウモロコシ澱粉の発酵・分解"
+      - name: "トウモロコシ"
+        role: "農作物原料"
+        note: "USDA: 米国全世界33%・ブラジル12%・中国20%"
+
+  ionomer_resin:
+    self:
+      name: "アイオノマー樹脂 (Surlyn等)"
+      role: "重合体"
+    parents:
+      - name: "エチレン-メタクリル酸共重合体"
+        role: "前工程ポリマー"
+        wb_commodity: "CRUDE_BRENT"
+      - name: "Zn / Na イオン (中和剤)"
+        role: "改質剤"
+        usgs_element: "Zn"
+
+  titanium_alloy:
+    self:
+      name: "チタン合金 (Ti-6Al-4V)"
+      role: "合金"
+    parents:
+      - name: "チタンスポンジ"
+        role: "精錬金属"
+        usgs_element: "Ti_sponge"
+        strategic_token: "Ti"
+        note: "USGS 2024: 中国65%・日本14%"
+        parents:
+          - name: "イルメナイト / ルチル (チタン鉱石)"
+            role: "原料鉱物"
+            usgs_element: "Ti"
+
+  tungsten:
+    self:
+      name: "タングステン (W)"
+      cas: "7440-33-7"
+      role: "金属"
+    parents:
+      - name: "タングステン鉱石 (灰重石・鉄マンガン重石)"
+        role: "原料鉱物"
+        usgs_element: "W"
+        strategic_token: "W"
+        note: "USGS 2024: 中国81%。EU+US+JP 3冠戦略物資"
+
+  carbon_fiber:
+    self:
+      name: "炭素繊維 (PAN系)"
+      role: "繊維"
+    parents:
+      - name: "アクリロニトリル (AN)"
+        role: "原料モノマー"
+        wb_commodity: "CRUDE_BRENT"
+        note: "プロピレン・アンモニア酸化"
+      - name: "PAN プレカーサー"
+        role: "前駆体繊維"
+        note: "東レ・三菱ケミカル・帝人 国内3社寡占"
+
+  # ==================== 産業品 ====================
+
+  high_damping_rubber:
+    self:
+      name: "高減衰ゴム配合 (MIRAIE/MAMORY)"
+      role: "配合系"
+    parents:
+      - name: "天然ゴム"
+        role: "主原料"
+        cas: "9006-04-6"
+      - name: "フェノール樹脂"
+        role: "減衰付与剤"
+        note: "住友ゴム独自配合"
+
+  pdms_silicone:
+    self:
+      name: "PDMS / シリコーンオイル"
+      cas: "63148-62-9"
+      role: "重合体"
+    parents:
+      - name: "ジメチルジクロロシラン (DMDCS)"
+        role: "モノマー"
+        note: "シリコン金属 + メチルクロライド (Müller-Rochow法)"
+        parents:
+          - name: "シリコン金属"
+            role: "原料金属"
+            usgs_element: "Si_metal"
+            strategic_token: "Si_metal"
+            note: "USGS 2024: 中国76%"
+
+  # ==================== 新規事業 ====================
+
+  li_s_battery_sulfur:
+    self:
+      name: "Li-S 電池正極活物質グレード硫黄"
+      cas: "7704-34-9"
+      role: "活物質"
+    parents:
+      - name: "硫黄 (高純度)"
+        role: "前工程"
+        cas: "7704-34-9"
+        usgs_element: "S"
+
+  li_compounds:
+    self:
+      name: "リチウム化合物 (Li2S, LiNO3等)"
+      cas: "12136-58-2"
+      role: "電池材料"
+    parents:
+      - name: "リチウム (Li 金属)"
+        role: "前工程"
+        usgs_element: "Li"
+        strategic_token: "Li"
+        note: "USGS 2024: 豪47%・チリ21%・中国17%"
+        parents:
+          - name: "塩水リチウム / リチア輝石"
+            role: "原料鉱物"
+            usgs_element: "Li"
+
+  graphene:
+    self:
+      name: "グラフェン / 導電性カーボン"
+      cas: "7782-42-5"
+      role: "炭素材料"
+    parents:
+      - name: "天然黒鉛 (graphite)"
+        role: "原料鉱物"
+        usgs_element: "C_graphite"
+        strategic_token: "C_graphite"
+        note: "USGS 2024: 中国78%"
+
+  automotive_semiconductor:
+    self:
+      name: "車載半導体 (Viaduct関連)"
+      role: "半導体"
+    parents:
+      - name: "シリコンウェハー"
+        role: "前工程"
+        usgs_element: "Si_metal"
+        note: "シリコン金属由来、純度11N以上"
+      - name: "TSMC / Samsung Foundry"
+        role: "ファウンドリ"
+        note: "台湾TSMC 57%・韓Samsung 17% (世界先端ロジック)"

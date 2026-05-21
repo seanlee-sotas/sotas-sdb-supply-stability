@@ -553,6 +553,197 @@ else:
                         st.info("FAOSTAT NR データ未取得")
                 i += 1
 
+        # ---------------------------------------------------------------
+        # サプライチェーン上流 — 系譜ツリー + レーダー重ね描き
+        # ---------------------------------------------------------------
+        upstream_chains = sl.load_upstream_chains()
+        chain = upstream_chains.get(m["id"])
+        if chain:
+            st.markdown("### 🔗 サプライチェーン上流 — 誘導品の前工程リスク継承")
+            st.caption(
+                "この物質は下流誘導品であり、**前工程物質のリスクが伝播** します。上流物質のスコアを重ね描きして集約リスクを評価します。"
+            )
+
+            nodes = sl.flatten_upstream(chain)
+
+            up_tab1, up_tab2, up_tab3 = st.tabs([
+                "🌳 系譜ツリー",
+                "📡 レーダー重ね描き",
+                "📊 上流ノード詳細",
+            ])
+
+            # ----- Tab 1: 系譜ツリー (text-based, depth indented) -----
+            with up_tab1:
+                tree_lines = []
+                for n in nodes:
+                    indent = "　" * n["depth"]
+                    arrow = "" if n["is_self"] else "← "
+                    role = f" **[{n['role']}]**" if n.get("role") else ""
+                    ref_chips = []
+                    if n.get("usgs_element"):
+                        ref_chips.append(f"⛏ USGS:{n['usgs_element']}")
+                    if n.get("wb_commodity"):
+                        ref_chips.append(f"💹 WB:{n['wb_commodity']}")
+                    if n.get("strategic_token"):
+                        ref_chips.append(f"🏛 戦略:{n['strategic_token']}")
+                    if n.get("cas"):
+                        ref_chips.append(f"CAS:`{n['cas']}`")
+                    chips = "  ".join(ref_chips)
+                    note = f"  \n{indent}　　_{n['note']}_" if n.get("note") else ""
+                    tree_lines.append(f"{indent}{arrow}**{n['name']}**{role}  \n{indent}　　{chips}{note}")
+                st.markdown("\n\n".join(tree_lines))
+
+            # ----- Tab 2: レーダー重ね描き -----
+            with up_tab2:
+                st.markdown("**自物質 + 上流物質の7軸スコアを重ね描き** (上流リスクが下流に伝播するかを視覚化)")
+
+                axis_labels = {
+                    "axis1_capacity": "🏭軸1",
+                    "axis2_supply_demand": "⚖️軸2",
+                    "axis3_jp_concentration": "🤝軸3",
+                    "axis4_global_hhi": "🌐軸4",
+                    "axis5_regulation": "📋軸5",
+                    "axis6_events": "💥軸6",
+                    "axis7_price": "💹軸7",
+                }
+
+                radar_fig = go.Figure()
+                # Reference lines
+                theta_full = list(axis_labels.values()) + [list(axis_labels.values())[0]]
+                radar_fig.add_trace(go.Scatterpolar(
+                    r=[60]*len(theta_full), theta=theta_full,
+                    line=dict(color="#FDE68A", dash="dot"), name="注意ライン", showlegend=False,
+                ))
+                radar_fig.add_trace(go.Scatterpolar(
+                    r=[30]*len(theta_full), theta=theta_full,
+                    line=dict(color="#FCA5A5", dash="dot"), name="危険ライン", showlegend=False,
+                ))
+
+                colors = ["#0F766E", "#EA580C", "#7C3AED", "#0EA5E9", "#DC2626"]
+                aggregated_min = {k: None for k in axis_labels}  # 最悪値集約
+
+                plotted = 0
+                for idx, n in enumerate(nodes):
+                    if not n.get("cas") and not n["is_self"]:
+                        # CAS のない上流ノードは scoring 計算不可、skip
+                        continue
+                    cas_for_score = n.get("cas") or m.get("cas")
+                    if not cas_for_score:
+                        continue
+                    try:
+                        n_sub = scoring.compute_all(cas_for_score)
+                    except Exception:
+                        continue
+                    if not n_sub:
+                        continue
+                    r_vals = []
+                    for k in axis_labels:
+                        s_ = n_sub.get(k, {}).get("score")
+                        v = s_ if s_ is not None else 0
+                        r_vals.append(v)
+                        if s_ is not None and (aggregated_min[k] is None or s_ < aggregated_min[k]):
+                            aggregated_min[k] = s_
+                    r_vals.append(r_vals[0])
+                    color = colors[plotted % len(colors)]
+                    label = "★ " + n["name"] if n["is_self"] else f"↑ {n['name']}"
+                    radar_fig.add_trace(go.Scatterpolar(
+                        r=r_vals, theta=theta_full,
+                        fill="toself" if n["is_self"] else None,
+                        line=dict(color=color, width=3 if n["is_self"] else 1.5,
+                                  dash="solid" if n["is_self"] else "dot"),
+                        fillcolor="rgba(15,118,110,0.15)" if n["is_self"] else None,
+                        name=label,
+                    ))
+                    plotted += 1
+                    if plotted >= 5:  # 上限5物質
+                        break
+
+                # 集約最悪値も追加
+                if plotted >= 2:
+                    agg_r = [aggregated_min[k] if aggregated_min[k] is not None else 0 for k in axis_labels]
+                    agg_r.append(agg_r[0])
+                    radar_fig.add_trace(go.Scatterpolar(
+                        r=agg_r, theta=theta_full,
+                        line=dict(color="#000000", width=2, dash="dash"),
+                        name="⚠ 集約最悪値",
+                    ))
+
+                radar_fig.update_layout(
+                    polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                    showlegend=True, height=500, template="simple_white",
+                    margin=dict(l=40, r=40, t=20, b=20),
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.15),
+                )
+                if plotted == 0:
+                    st.info("上流物質に CAS が紐付いていないため scoring 不可。系譜ツリー + 上流ノード詳細を参照ください。")
+                else:
+                    st.plotly_chart(radar_fig, use_container_width=True)
+                    st.caption(
+                        "**集約最悪値 (⚠点線)** : 自物質と上流物質の各軸スコアのうち最も悪い値を取った仮想ラインです。"
+                        " 下流物質の真のリスクは「自物質の score」ではなく、この集約値に近いと考えてください。"
+                    )
+
+                    # Show aggregated min scores as a table
+                    agg_rows = []
+                    for k, label in axis_labels.items():
+                        agg_rows.append({
+                            "軸": label,
+                            "自物質": f"{(scoring.compute_all(m['cas']) or {}).get(k, {}).get('score', 0):.0f}" if m.get("cas") else "—",
+                            "集約最悪値": f"{aggregated_min[k]:.0f}" if aggregated_min[k] is not None else "—",
+                        })
+                    st.markdown("**軸別 自物質 vs 集約最悪値**")
+                    st.dataframe(pd.DataFrame(agg_rows), use_container_width=True, hide_index=True)
+
+            # ----- Tab 3: 上流ノード詳細 -----
+            with up_tab3:
+                st.markdown("**各上流ノードのリスクシグナル** (USGS国別集中 / WB価格 / 戦略物資フラグ)")
+                usgs_df_cached = _load_usgs_concentration()
+                strat_df_cached = _load_strategic_flags()
+
+                for n in nodes:
+                    if n["is_self"]:
+                        continue
+                    title = f"{'　'*(n['depth']-1)}↑ {n['name']}  _{n.get('role', '')}_"
+                    with st.expander(title, expanded=False):
+                        cols = st.columns(3)
+                        with cols[0]:
+                            st.markdown("**🆔 識別**")
+                            if n.get("cas"):
+                                st.markdown(f"- CAS: `{n['cas']}`")
+                            if n.get("usgs_element"):
+                                st.markdown(f"- USGS: `{n['usgs_element']}`")
+                            if n.get("wb_commodity"):
+                                st.markdown(f"- WB: `{n['wb_commodity']}`")
+                            if n.get("strategic_token"):
+                                st.markdown(f"- 戦略: `{n['strategic_token']}`")
+                        with cols[1]:
+                            if n.get("usgs_element") and len(usgs_df_cached):
+                                sub = usgs_df_cached[usgs_df_cached["element"] == n["usgs_element"]]
+                                if len(sub):
+                                    sub_nonothers = sub[sub["country"] != "Others"]
+                                    if len(sub_nonothers):
+                                        top = sub_nonothers.sort_values("share_pct", ascending=False).iloc[0]
+                                        hhi = float((sub_nonothers["share_pct"] ** 2).sum())
+                                        band = "🔴 高集中" if hhi >= 2500 else ("🟡 中集中" if hhi >= 1500 else "🟢 低集中")
+                                        st.markdown("**⛏ USGS 集中度**")
+                                        st.markdown(f"- Top: **{top['country']}** ({top['share_pct']:.0f}%)")
+                                        st.markdown(f"- HHI: **{hhi:.0f}** {band}")
+                        with cols[2]:
+                            if n.get("strategic_token") and len(strat_df_cached):
+                                hit = strat_df_cached[strat_df_cached["token"] == n["strategic_token"]]
+                                if len(hit):
+                                    h = hit.iloc[0]
+                                    sc = int(h["strategic_count"])
+                                    st.markdown("**🏛 戦略物資**")
+                                    st.markdown(f"- EU: {'✅ Strategic' if h['eu_strategic'] else ('⚠ Critical' if h['eu_critical'] else '—')}")
+                                    st.markdown(f"- US: {'✅' if h['us_critical_2022'] else '—'}")
+                                    st.markdown(f"- JP: {'✅ '+(h['meti_category'] or '') if h['meti_critical'] else '—'}")
+                                    st.markdown(f"- **3国認定: {sc}/3**")
+                        if n.get("note"):
+                            st.caption(f"📝 {n['note']}")
+
+            st.markdown("---")
+
         st.markdown("### 総評")
         if comp and sub:
             try:

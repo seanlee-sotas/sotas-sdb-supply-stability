@@ -66,6 +66,54 @@ def axis_signal_emoji(score: float | None) -> str:
     return "🔴"
 
 
+@st.cache_data(show_spinner=False)
+def load_upstream_chains() -> dict:
+    """app/sumitomo_upstream.yml をパース。物質id → 上流系譜 (self + parents tree)."""
+    import yaml
+    p = Path(__file__).resolve().parent / "sumitomo_upstream.yml"
+    if not p.exists():
+        return {}
+    try:
+        doc = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        return doc.get("chains") or {}
+    except Exception:
+        return {}
+
+
+def flatten_upstream(chain: dict, depth: int = 0, parent_role: str = "") -> list[dict]:
+    """Flatten the upstream tree into a list of nodes with depth annotation."""
+    nodes = []
+    if "self" in chain:
+        s = chain["self"]
+        nodes.append({
+            "name": s.get("name"),
+            "cas": s.get("cas"),
+            "role": s.get("role") or "self",
+            "depth": 0,
+            "is_self": True,
+        })
+    for p in chain.get("parents", []):
+        nodes.extend(_walk_node(p, depth=1))
+    return nodes
+
+
+def _walk_node(node: dict, depth: int) -> list[dict]:
+    out = [{
+        "name": node.get("name"),
+        "cas": node.get("cas"),
+        "role": node.get("role"),
+        "note": node.get("note"),
+        "usgs_element": node.get("usgs_element"),
+        "wb_commodity": node.get("wb_commodity"),
+        "strategic_token": node.get("strategic_token"),
+        "depth": depth,
+        "is_self": False,
+    }]
+    for child in node.get("parents", []) or []:
+        out.extend(_walk_node(child, depth + 1))
+    return out
+
+
 AXIS_LABELS = {
     "axis1_capacity": "🏭 軸1 生産能力",
     "axis2_supply_demand": "⚖️ 軸2 需給",
