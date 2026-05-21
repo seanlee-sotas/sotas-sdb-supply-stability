@@ -331,11 +331,13 @@ def render_source(
     *,
     preview_limit: int = 50,
     expanded: bool = False,
+    key_suffix: str = "",
 ) -> None:
     """Render a self-contained raw-source inspection expander.
 
-    Safe to call multiple times per page — each call uses dataset_id as part of
-    the widget key namespace.
+    `key_suffix` must be unique when the same dataset is rendered on multiple
+    axis tabs (e.g. comtrade is used on both axis 2 and axis 4) — otherwise
+    Streamlit raises StreamlitDuplicateElementKey on the inner button.
     """
     meta = DATASETS.get(dataset_id)
     if meta is None:
@@ -368,7 +370,7 @@ def render_source(
         # --- gated heavy work: column dict + file meta + preview + CSV ---
         # Streamlit renders expander contents eagerly, so multiple dataframes
         # in render_cross() / axis tabs slow first paint. Gate behind button.
-        load_key = f"load_{dataset_id}_{parquet_path.name}"
+        load_key = f"load_{dataset_id}_{parquet_path.name}_{key_suffix}"
         if not st.session_state.get(load_key + "_loaded"):
             if st.button(
                 "📋 カラム定義 + プレビューを表示",
@@ -408,7 +410,7 @@ def render_source(
                 data=csv_bytes,
                 file_name=f"{parquet_path.stem}_sample.csv",
                 mime="text/csv",
-                key=f"dl_{dataset_id}_{parquet_path.name}",
+                key=f"dl_{dataset_id}_{parquet_path.name}_{key_suffix}",
             )
         except Exception as e:
             st.warning(f"CSV書き出し失敗: {e}")

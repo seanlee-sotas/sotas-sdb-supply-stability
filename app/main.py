@@ -272,7 +272,7 @@ def render_axis4():
         st.info("現データは1期のみ。`uv run python ingest/comtrade.py` で全期間ingest。")
 
     st.divider()
-    source_inspector.render_source("comtrade_trade", parquet)
+    source_inspector.render_source("comtrade_trade", parquet, key_suffix="axis4")
 
 
 # ---------- tab 5 ----------
@@ -814,7 +814,7 @@ def render_axis2():
     st.caption("📝 注: これは「日本の貿易フロー」由来のproxy。本格的な需給バランス（稼働率・在庫水準）は別途METI/JPCAデータ整備で精緻化予定。")
 
     st.divider()
-    source_inspector.render_source("comtrade_trade", parquet)
+    source_inspector.render_source("comtrade_trade", parquet, key_suffix="axis2")
 
 
 # ---------- tab 3 ----------
