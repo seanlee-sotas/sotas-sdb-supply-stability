@@ -1,10 +1,12 @@
 """軸データブラウザ — 7軸ごとに生parquet・カラム定義・メタ情報を閲覧."""
 
+import sys
 from pathlib import Path
 
 import streamlit as st
 
-from app import source_inspector
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import source_inspector  # noqa: E402
 
 st.set_page_config(
     page_title="軸データブラウザ | SDB Mock",

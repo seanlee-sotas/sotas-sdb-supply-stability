@@ -3,9 +3,13 @@
 エントリポイント。Cloud では Main file path に `app/sumitomo_app.py` を指定。
 """
 
+import sys
+from pathlib import Path
+
 import streamlit as st
 
-from app import sumitomo_loader as sl
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import sumitomo_loader as sl  # noqa: E402
 
 st.set_page_config(
     page_title="SDB Mock | 住友ゴム向け供給安定性",

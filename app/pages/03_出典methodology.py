@@ -1,8 +1,12 @@
 """出典・methodology — 物質抽出手法・3層信頼度・公開資料一覧・軸スコアロジック."""
 
+import sys
+from pathlib import Path
+
 import streamlit as st
 
-from app import sumitomo_loader as sl
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import sumitomo_loader as sl  # noqa: E402
 
 st.set_page_config(
     page_title="出典・methodology | SDB Mock",

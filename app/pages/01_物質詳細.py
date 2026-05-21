@@ -1,12 +1,15 @@
 """物質詳細 — 選択した物質の出典・7軸スコア・懸念要因を集約表示."""
 
 import json
+import sys
+from pathlib import Path
 
 import plotly.graph_objects as go
 import streamlit as st
 
-from app import sumitomo_loader as sl
-from app import scoring
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import sumitomo_loader as sl  # noqa: E402
+import scoring  # noqa: E402
 
 st.set_page_config(
     page_title="物質詳細 | SDB Mock",
@@ -299,7 +302,7 @@ else:
         st.markdown("### 総評")
         if comp and sub:
             try:
-                from app import chemicals_loader as cl
+                import chemicals_loader as cl
                 chem = cl.get_chemical(m["cas"])
                 if chem:
                     narr = scoring.narrative(chem, sub, comp)
