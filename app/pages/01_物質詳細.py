@@ -621,6 +621,7 @@ else:
 
                 colors = ["#0F766E", "#EA580C", "#7C3AED", "#0EA5E9", "#DC2626"]
                 aggregated_min = {k: None for k in axis_labels}  # 最悪値集約
+                self_scores: dict[str, float | None] = {k: None for k in axis_labels}  # 自物質スコアキャッシュ
 
                 plotted = 0
                 for idx, n in enumerate(nodes):
@@ -643,6 +644,8 @@ else:
                         r_vals.append(v)
                         if s_ is not None and (aggregated_min[k] is None or s_ < aggregated_min[k]):
                             aggregated_min[k] = s_
+                        if n["is_self"]:
+                            self_scores[k] = s_
                     r_vals.append(r_vals[0])
                     color = colors[plotted % len(colors)]
                     label = "★ " + n["name"] if n["is_self"] else f"↑ {n['name']}"
@@ -686,12 +689,16 @@ else:
                     # Show aggregated min scores as a table
                     agg_rows = []
                     for k, label in axis_labels.items():
+                        self_v = self_scores.get(k)
+                        agg_v = aggregated_min.get(k)
+                        delta = (agg_v - self_v) if (self_v is not None and agg_v is not None) else None
                         agg_rows.append({
                             "軸": label,
-                            "自物質": f"{(scoring.compute_all(m['cas']) or {}).get(k, {}).get('score', 0):.0f}" if m.get("cas") else "—",
-                            "集約最悪値": f"{aggregated_min[k]:.0f}" if aggregated_min[k] is not None else "—",
+                            "自物質": f"{self_v:.0f}" if self_v is not None else "—",
+                            "集約最悪値": f"{agg_v:.0f}" if agg_v is not None else "—",
+                            "下振れ幅": f"{delta:+.0f}" if delta is not None and abs(delta) > 0.5 else "—",
                         })
-                    st.markdown("**軸別 自物質 vs 集約最悪値**")
+                    st.markdown("**軸別 自物質 vs 集約最悪値** (下振れ幅マイナスは上流リスクが下流より重い)")
                     st.dataframe(pd.DataFrame(agg_rows), use_container_width=True, hide_index=True)
 
             # ----- Tab 3: 上流ノード詳細 -----
