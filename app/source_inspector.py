@@ -294,8 +294,10 @@ DATASETS: dict[str, dict] = {
 }
 
 
-def _file_meta(path: Path) -> tuple[str, int, str]:
-    """Return (size_human, row_count, mtime_iso)."""
+@st.cache_data(show_spinner=False)
+def _file_meta(path_str: str, mtime: float) -> tuple[str, int, str]:
+    """Return (size_human, row_count, mtime_iso). Cached on (path, mtime)."""
+    path = Path(path_str)
     size = path.stat().st_size
     if size < 1024:
         size_h = f"{size} B"
@@ -305,8 +307,22 @@ def _file_meta(path: Path) -> tuple[str, int, str]:
         size_h = f"{size / 1024**2:.1f} MB"
     con = duckdb.connect()
     rows = con.execute(f"SELECT COUNT(*) FROM '{path}'").fetchone()[0]
-    mtime = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-    return size_h, rows, mtime
+    mtime_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+    return size_h, rows, mtime_str
+
+
+@st.cache_data(show_spinner=False)
+def _preview_df(path_str: str, mtime: float, limit: int):
+    """Cached preview head. mtime is the cache key, not used in logic."""
+    con = duckdb.connect()
+    return con.execute(f"SELECT * FROM '{path_str}' LIMIT {limit}").df()
+
+
+@st.cache_data(show_spinner=False)
+def _sample_csv_bytes(path_str: str, mtime: float, cap: int) -> bytes:
+    con = duckdb.connect()
+    df = con.execute(f"SELECT * FROM '{path_str}' LIMIT {cap}").df()
+    return df.to_csv(index=False).encode("utf-8-sig")
 
 
 def render_source(
@@ -333,18 +349,14 @@ def render_source(
         return
 
     parquet_path = Path(parquet_path)
-    with st.expander(f"📂 ソース生データ — {meta['title']}", expanded=expanded):
-        # --- header line ---
-        try:
-            size_h, rows, mtime = _file_meta(parquet_path)
-            st.caption(
-                f"`{parquet_path.relative_to(parquet_path.parents[2])}` · {rows:,} rows · "
-                f"{size_h} · 更新 {mtime}"
-            )
-        except Exception as e:
-            st.caption(f"`{parquet_path.name}` (メタ取得失敗: {e})")
+    path_str = str(parquet_path)
+    try:
+        mtime = parquet_path.stat().st_mtime
+    except OSError:
+        mtime = 0.0
 
-        # --- source attribution ---
+    with st.expander(f"📂 ソース生データ — {meta['title']}", expanded=expanded):
+        # --- source attribution (cheap, render first) ---
         st.markdown(
             f"**出典:** [{meta['source_url']}]({meta['source_url']})  \n"
             f"**ライセンス:** {meta['license']}  \n"
@@ -353,39 +365,48 @@ def render_source(
             f"**利用軸:** {', '.join(meta['axes'])}"
         )
 
-        # --- column dictionary ---
+        # --- column dictionary (no IO) ---
         _render_column_dict(meta)
 
-        # --- live preview ---
+        # --- gated heavy work: file meta + preview + CSV ---
+        load_key = f"load_{dataset_id}_{parquet_path.name}"
+        st.caption("⚠️ ファイルメタ / プレビュー / CSV は下のボタンで読み込みます (大きい parquet 対策)。")
+        if st.button("📊 メタ + プレビューを読み込む", key=load_key):
+            st.session_state[load_key + "_loaded"] = True
+
+        if not st.session_state.get(load_key + "_loaded"):
+            return
+
+        try:
+            size_h, rows, mtime_str = _file_meta(path_str, mtime)
+            try:
+                rel = parquet_path.relative_to(parquet_path.parents[2])
+            except (ValueError, IndexError):
+                rel = parquet_path.name
+            st.caption(f"`{rel}` · {rows:,} rows · {size_h} · 更新 {mtime_str}")
+        except Exception as e:
+            st.caption(f"`{parquet_path.name}` (メタ取得失敗: {e})")
+
         st.markdown(f"**プレビュー (先頭 {preview_limit} 行)**")
         try:
-            con = duckdb.connect()
-            preview_df = con.execute(
-                f"SELECT * FROM '{parquet_path}' LIMIT {preview_limit}"
-            ).df()
+            preview_df = _preview_df(path_str, mtime, preview_limit)
             st.dataframe(preview_df, use_container_width=True, height=320)
         except Exception as e:
             st.error(f"プレビュー失敗: {e}")
-            preview_df = None
+            return
 
-        # --- download (sample only, capped to 5000 rows to avoid OOM in Cloud) ---
-        if preview_df is not None:
-            sample_cap = 5000
-            try:
-                con = duckdb.connect()
-                sample_df = con.execute(
-                    f"SELECT * FROM '{parquet_path}' LIMIT {sample_cap}"
-                ).df()
-                csv_bytes = sample_df.to_csv(index=False).encode("utf-8-sig")
-                st.download_button(
-                    label=f"⬇️ CSV ダウンロード (最大 {sample_cap:,} 行)",
-                    data=csv_bytes,
-                    file_name=f"{parquet_path.stem}_sample.csv",
-                    mime="text/csv",
-                    key=f"dl_{dataset_id}_{parquet_path.name}",
-                )
-            except Exception as e:
-                st.warning(f"CSV書き出し失敗: {e}")
+        sample_cap = 5000
+        try:
+            csv_bytes = _sample_csv_bytes(path_str, mtime, sample_cap)
+            st.download_button(
+                label=f"⬇️ CSV ダウンロード (最大 {sample_cap:,} 行)",
+                data=csv_bytes,
+                file_name=f"{parquet_path.stem}_sample.csv",
+                mime="text/csv",
+                key=f"dl_{dataset_id}_{parquet_path.name}",
+            )
+        except Exception as e:
+            st.warning(f"CSV書き出し失敗: {e}")
 
 
 def _render_column_dict(meta: dict) -> None:
