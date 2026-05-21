@@ -24,7 +24,12 @@ CHEM_P = ROOT / "data" / "chemicals" / "chemicals.parquet"
 HS_MAP_P = ROOT / "data" / "chemicals" / "chemicals_hs_map.parquet"
 
 BATCH_SIZE = 25
-MODEL = "gemini-2.5-pro"
+# Model selection notes (free tier quotas as of 2026-05):
+# - gemini-2.5-pro:        5 RPM, 100 RPD — quota tight
+# - gemini-2.5-flash:     10 RPM,  20 RPD — main model, burns out fast
+# - gemini-2.5-flash-lite:           250 RPD — fallback for retries
+# - gemini-2.0-flash-lite:           too restrictive
+MODEL = "gemini-2.5-flash-lite"
 
 HS_LABELS = {
     "25": "塩・硫黄・土石類", "27": "鉱物性燃料・油・蝋", "28": "無機化学品",
@@ -86,10 +91,12 @@ def main():
     con = duckdb.connect()
     chems = con.execute(f"SELECT cas, name_en, category_norm, molecular_formula FROM '{CHEM_P}'").df()
     existing = pd.read_parquet(HS_MAP_P)
-    have_exact_cas = set(existing[existing["hs6"].notna() & (existing["source"] == "materials_yml")]["cas"])
-    # Skip CAS that already have exact HS6 from a trusted source
+    # Skip CAS that already have an exact HS6 from ANY non-category source
+    have_exact_cas = set(
+        existing[existing["hs6"].notna() & (existing["source"] != "category_default")]["cas"]
+    )
     todo = chems[~chems["cas"].isin(have_exact_cas)].reset_index(drop=True)
-    print(f"Skipping {len(have_exact_cas)} CAS with existing materials_yml HS6")
+    print(f"Skipping {len(have_exact_cas)} CAS with existing exact HS6 (materials_yml/llm_gemini)")
     print(f"To classify: {len(todo)} CAS in batches of {BATCH_SIZE}")
 
     new_rows: list[dict] = []
@@ -104,7 +111,7 @@ def main():
         total_n = (len(todo) + BATCH_SIZE - 1) // BATCH_SIZE
         print(f"  [{n}/{total_n}] batch CAS {batch.iloc[0]['cas']} … {batch.iloc[-1]['cas']}")
         try:
-            result = gc.chat(prompt, model=MODEL, json_schema=SCHEMA, max_output_tokens=6000)
+            result = gc.chat(prompt, model=MODEL, json_schema=SCHEMA, max_output_tokens=12000)
         except RuntimeError as e:
             print(f"    FAILED: {e}")
             continue
@@ -123,7 +130,7 @@ def main():
                 "rationale": m.get("rationale", "")[:200],
                 "created_at": datetime.now(timezone.utc).isoformat(),
             })
-        time.sleep(1.5)  # pacing under 100 RPD ceiling
+        time.sleep(4.5)  # ~13 RPM ceiling on Flash free tier (15 RPM hard limit)
 
     if not new_rows:
         print("No new mappings.")

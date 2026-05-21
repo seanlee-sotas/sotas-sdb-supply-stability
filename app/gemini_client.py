@@ -37,6 +37,9 @@ def is_available() -> bool:
     return bool(_key())
 
 
+import time
+
+
 def chat(
     prompt: str,
     model: str = "gemini-2.5-flash",
@@ -44,8 +47,13 @@ def chat(
     max_output_tokens: int = 4096,
     temperature: float = 0.3,
     timeout: int = 60,
+    max_retries: int = 3,
 ) -> str | dict:
-    """One-shot chat call. If json_schema given, returns parsed dict; else returns text."""
+    """One-shot chat call. If json_schema given, returns parsed dict; else returns text.
+
+    Retries on 429 with exponential backoff (15s, 30s, 60s) — common on free tier
+    when sustained RPM ceiling hits transiently.
+    """
     k = _key()
     if not k:
         raise RuntimeError("Gemini API key not configured. See app/gemini_client.py for setup.")
@@ -61,17 +69,32 @@ def chat(
         body["generationConfig"]["responseMimeType"] = "application/json"
         body["generationConfig"]["responseSchema"] = json_schema
 
-    r = requests.post(url, json=body, timeout=timeout)
-    if r.status_code == 429:
-        raise RuntimeError(f"Gemini rate-limited (429). Try again after quota reset.")
-    if r.status_code != 200:
-        raise RuntimeError(f"Gemini API error {r.status_code}: {r.text[:500]}")
+    last_err: str = ""
+    for attempt in range(max_retries):
+        r = requests.post(url, json=body, timeout=timeout)
+        if r.status_code in (429, 503):
+            # 429 = rate limit; 503 = temporary high demand. Both warrant backoff retry.
+            wait = (15 if r.status_code == 429 else 5) * (2 ** attempt)
+            last_err = f"{r.status_code} backoff {wait}s (attempt {attempt+1}/{max_retries})"
+            if attempt < max_retries - 1:
+                time.sleep(wait)
+                continue
+            raise RuntimeError(f"Gemini {r.status_code} after {max_retries} retries. Body: {r.text[:300]}")
+        if r.status_code != 200:
+            raise RuntimeError(f"Gemini API error {r.status_code}: {r.text[:500]}")
+        break
 
     data = r.json()
     try:
         text = data["candidates"][0]["content"]["parts"][0]["text"]
     except (KeyError, IndexError):
-        raise RuntimeError(f"Gemini response missing text: {data}")
+        finish = data.get("candidates", [{}])[0].get("finishReason", "?")
+        usage = data.get("usageMetadata", {})
+        raise RuntimeError(
+            f"Gemini response missing text (finishReason={finish}, "
+            f"thoughts={usage.get('thoughtsTokenCount', 0)}, total={usage.get('totalTokenCount', 0)}). "
+            f"Try larger max_output_tokens."
+        )
 
     if json_schema is not None:
         try:

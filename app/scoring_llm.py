@@ -16,7 +16,7 @@ import chemicals_loader as cl
 import gemini_client as gc
 import scoring
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-2.5-flash-lite"  # 250 RPD free tier vs 20 RPD on plain flash
 
 PROMPT_TEMPLATE = """\
 あなたは化学品の調達戦略アナリストです。以下の物質の供給安定性7軸スコアを読み、
