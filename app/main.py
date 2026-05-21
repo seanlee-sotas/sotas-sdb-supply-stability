@@ -730,22 +730,32 @@ def render_axis6():
         axis6_hits = _filter_axis6_by_codes(us_list, jp_list, kr_list, tw_list, df_cls_full)
         axis6_hits = _enrich_with_origin(axis6_hits)
         sec_hits = _sec_events_for_tickers(us_list)
+        # Common columns we display downstream
+        DISPLAY_COLS = ["_date", "source", "supply_relevance", "event_type", "_company", "summary_ja", "_url"]
+        # Normalize axis6_hits (already has _date/_company/_industry/_url from _enrich_with_origin)
+        for col in DISPLAY_COLS:
+            if col not in axis6_hits.columns:
+                axis6_hits[col] = ""
+        # Normalize sec_hits
         if not sec_hits.empty:
             sec_hits = sec_hits.assign(
                 source="sec_8k_item801",
-                _date=sec_hits["filing_date"],
+                _date=sec_hits["filing_date"].astype(str),
                 _company=sec_hits["company_name"],
-                _industry="米化学",
                 _url=sec_hits.get("accession_url", ""),
             )
-            merged = pd.concat([axis6_hits, sec_hits[axis6_hits.columns.tolist() if not axis6_hits.empty else sec_hits.columns]], ignore_index=True)
-        else:
-            merged = axis6_hits
+        for col in DISPLAY_COLS:
+            if col not in sec_hits.columns:
+                sec_hits[col] = ""
+        merged = pd.concat(
+            [axis6_hits[DISPLAY_COLS], sec_hits[DISPLAY_COLS]],
+            ignore_index=True,
+        )
         if merged.empty:
             st.info("該当イベントなし")
         else:
             merged["旗"] = merged["source"].map(lambda s: SOURCE_FLAG.get(s, "🇺🇸 SEC" if "sec" in str(s) else s))
-            disp = merged.sort_values("_date", ascending=False)[["_date", "旗", "supply_relevance", "event_type", "_company", "summary_ja", "_url"]]
+            disp = merged.sort_values("_date", ascending=False)[["_date", "旗", "supply_relevance", "event_type", "_company", "summary_ja", "_url"]].copy()
             disp.columns = ["日付", "ソース", "重要度", "Event", "企業", "要約", "リンク"]
             st.dataframe(disp, use_container_width=True, hide_index=True, height=320)
 
