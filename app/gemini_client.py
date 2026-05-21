@@ -23,14 +23,24 @@ BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 @lru_cache(maxsize=1)
 def _key() -> str | None:
+    # Priority order: local file → env var → Streamlit secrets
     if KEY_PATH.exists():
         try:
             data = json.loads(KEY_PATH.read_text())
-            return data.get("api_key") or data.get("GEMINI_API_KEY")
+            v = data.get("api_key") or data.get("GEMINI_API_KEY")
+            if v and not v.startswith("PASTE_"):
+                return v
         except (json.JSONDecodeError, OSError):
-            return None
+            pass
     env_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_AI_API_KEY")
-    return env_key
+    if env_key:
+        return env_key
+    # Streamlit Cloud secrets (only available when run via streamlit)
+    try:
+        import streamlit as st
+        return st.secrets.get("GEMINI_API_KEY")
+    except (ImportError, FileNotFoundError, KeyError, Exception):
+        return None
 
 
 def is_available() -> bool:
