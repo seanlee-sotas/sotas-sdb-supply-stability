@@ -34,6 +34,10 @@ import gemini_client as gemini  # noqa: E402
 
 OUT_DIR = ROOT / "data" / "axis6_classified"
 MODEL = "gemini-2.5-flash-lite"
+# Pool sizes (Gemini free tier as of 2026-05):
+#   gemini-2.5-flash-lite  → 250 RPD
+#   gemini-2.5-pro         → 100 RPD (separate pool, useful as fallback)
+#   gemini-2.5-flash       →  20 RPD (too small for batches)
 
 # Source registry: (source_name, input_parquet_glob, id_col, text_cols_for_prompt)
 SOURCES = [
@@ -144,7 +148,7 @@ def build_rows_text(batch: pd.DataFrame, source: dict) -> str:
     return "\n".join(lines)
 
 
-def classify_source(source: dict, max_items: int | None = None) -> int:
+def classify_source(source: dict, max_items: int | None = None, model: str = MODEL) -> int:
     in_path = latest_input(source)
     if not in_path:
         print(f"[{source['name']}] no input parquet, skip")
@@ -180,7 +184,7 @@ def classify_source(source: dict, max_items: int | None = None) -> int:
         )
         print(f"  [{bi+1}/{n_batches}] batch of {len(batch)}", flush=True)
         try:
-            parsed = gemini.chat(prompt, model=MODEL, json_schema=SCHEMA, max_output_tokens=8000)
+            parsed = gemini.chat(prompt, model=model, json_schema=SCHEMA, max_output_tokens=8000)
         except RuntimeError as e:
             print(f"    FAILED: {e}")
             time.sleep(5)
@@ -218,17 +222,17 @@ def classify_source(source: dict, max_items: int | None = None) -> int:
     return len(results)
 
 
-def main(only: str | None = None, max_items: int | None = None):
+def main(only: str | None = None, max_items: int | None = None, model: str = MODEL):
     if not gemini.is_available():
         print("ERROR: Gemini API key not set. Configure ~/.config/gemini/keys.json")
         sys.exit(1)
     sources = [s for s in SOURCES if only is None or s["name"] == only]
     total = 0
     for s in sources:
-        n = classify_source(s, max_items=max_items)
+        n = classify_source(s, max_items=max_items, model=model)
         total += n
         print()
-    print(f"\nDONE — classified {total} new items across {len(sources)} sources")
+    print(f"\nDONE — classified {total} new items across {len(sources)} sources (model={model})")
 
 
 if __name__ == "__main__":
@@ -236,5 +240,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", help="run for a single source name")
     ap.add_argument("--max", type=int, default=None, help="cap per source")
+    ap.add_argument("--model", default=MODEL, help="Gemini model (default flash-lite, use gemini-2.5-pro to spend separate quota)")
     args = ap.parse_args()
-    main(only=args.only, max_items=args.max)
+    main(only=args.only, max_items=args.max, model=args.model)
