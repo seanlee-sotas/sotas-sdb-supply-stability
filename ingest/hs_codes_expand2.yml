@@ -1,0 +1,52 @@
+# Expansion batch 2 — 30 HS6 codes ranked by CAS coverage value.
+# 30 codes × 2 flows × 4 years (2021-2024) = 240 calls (under Free-tier 250/day limit).
+# Selected by: chemicals_hs_map.parquet → group by hs6 → top by unique CAS count.
+# These bring Comtrade chemical-CAS coverage from 40 → 70 HS6 codes,
+# unlocking ~150 additional CAS for axis 2 / axis 4.
+
+hs_codes:
+  # 有機化学品 (Chapter 29) — highest CAS counts
+  - "293190"  # Other organo-inorganic compounds (14 CAS)
+  - "290290"  # Other cyclic hydrocarbons (9 CAS)
+  - "291734"  # Esters of orthophthalic acid (9 CAS)
+  - "290319"  # Saturated chlorinated derivatives (8 CAS)
+  - "290389"  # Halogenated/cyclic derivatives (8 CAS)
+  - "293399"  # Heterocyclic compounds w/ N (8 CAS)
+  - "291739"  # Aromatic polycarboxylic esters, other (7 CAS)
+  - "291590"  # Saturated monocarboxylic acids, other (7 CAS)
+  - "293299"  # Heterocyclic compounds w/ O, other (6 CAS)
+  - "290719"  # Monophenols, other (5 CAS)
+  - "293499"  # Heterocyclic compounds, other (5 CAS)
+  - "292419"  # Acyclic amides (5 CAS)
+  - "293090"  # Organo-sulfur compounds, other (5 CAS)
+  - "290919"  # Acyclic ethers, other (5 CAS)
+  - "292090"  # Other esters of inorganic acids (5 CAS)
+  - "290369"  # Halogenated derivatives of aromatic hc (4 CAS)
+  - "290930"  # Aromatic ethers (4 CAS)
+  - "292119"  # Acyclic monoamines (3 CAS)
+  - "290349"  # Halogenated derivatives, other (3 CAS)
+  - "290339"  # Fluorinated/iodinated/brominated (3 CAS)
+  - "291899"  # Carboxylic acids w/ additional O (3 CAS)
+  - "290329"  # Unsaturated chlorinated derivatives (3 CAS)
+
+  # 無機化学品 (Chapter 28)
+  - "284190"  # Salts of oxometallic acids, other (11 CAS)
+  - "282590"  # Bases/oxides/hydroxides, other (7 CAS)
+  - "283329"  # Sulfates, other (4 CAS)
+  - "280530"  # Rare earth metals (4 CAS)
+  - "284000"  # Borates, peroxoborates (3 CAS)
+  - "284150"  # Other chromates, dichromates (3 CAS)
+
+  # 各種化学工業生産品 (Chapter 38) / プラスチック (Chapter 39)
+  - "382499"  # Chemical products / preparations, other (4 CAS)
+  - "390729"  # Other polyethers in primary forms (3 CAS)
+
+flows:
+  - "X"
+  - "M"
+
+periods:
+  - "2024"
+  - "2023"
+  - "2022"
+  - "2021"

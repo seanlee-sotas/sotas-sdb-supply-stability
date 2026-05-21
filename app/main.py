@@ -582,15 +582,25 @@ def _filter_axis6_by_codes(us, jp_e, kr_c, tw, df_cls):
     return df_match
 
 
+_SEC_EMPTY = pd.DataFrame(columns=["ticker", "filing_date", "company_name", "event_type", "summary_ja", "supply_relevance", "accession_url"])
+
+
 def _sec_events_for_tickers(us_tickers: list) -> pd.DataFrame:
-    """Pull SEC 8-K item801 classified HIGH/MED events for given tickers."""
+    """Pull SEC 8-K item801 classified HIGH/MED events for given tickers.
+
+    Always returns a DataFrame with the expected columns even when empty —
+    callers do `.["supply_relevance"]` on the result.
+    """
     if not us_tickers:
-        return pd.DataFrame()
+        return _SEC_EMPTY.copy()
     cls_p = latest_parquet(SEC_DIR, "item801_classified")
     if cls_p is None:
-        return pd.DataFrame()
+        return _SEC_EMPTY.copy()
     df = pd.read_parquet(cls_p)
-    return df[df["ticker"].isin(us_tickers) & df["supply_relevance"].isin(["HIGH", "MED"])]
+    hits = df[df["ticker"].isin(us_tickers) & df["supply_relevance"].isin(["HIGH", "MED"])]
+    if hits.empty:
+        return _SEC_EMPTY.copy()
+    return hits
 
 
 # ---------- tab 6 ----------
