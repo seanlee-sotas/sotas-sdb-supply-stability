@@ -1220,6 +1220,67 @@ def render_axis2():
     st.caption("📝 注: これは「日本の貿易フロー」由来のproxy。本格的な需給バランス（稼働率・在庫水準）は別途METI/JPCAデータ整備で精緻化予定。")
 
     st.divider()
+    st.subheader("⚙️ JPCA 月次 エチレンクラッカー実質稼働率")
+    jpca_util_p = latest_parquet(ROOT / "data" / "jpca", "jpca_utilization")
+    if jpca_util_p is None:
+        st.info("JPCA 稼働率データ未取得。`uv run python ingest/jpca_utilization.py` 実行。")
+    else:
+        udf = pd.read_parquet(jpca_util_p).sort_values("period")
+        st.caption(
+            f"`{jpca_util_p.name}` — {len(udf)}ヶ月分 ({udf['period'].min()}〜{udf['period'].max()}). "
+            "「稼働プラントの実質稼働率試算」を石化協メモPDFから抽出。化学業界が見る代表的需給シグナル。"
+        )
+        latest_u = udf.iloc[-1]
+        mu1, mu2, mu3, mu4 = st.columns(4)
+        mu1.metric("当月", f"{latest_u['util_current']:.1f}%", help=f"{latest_u['period']}")
+        mu2.metric("前月", f"{latest_u['util_prev_month']:.1f}%")
+        mu3.metric("前年同月", f"{latest_u['util_prev_year_same_month']:.1f}%")
+        diff_yoy = latest_u['util_current'] - latest_u['util_prev_year_same_month']
+        mu4.metric("YoY 差", f"{diff_yoy:+.1f}pt")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=udf["period"], y=udf["util_current"],
+            mode="lines+markers", name="実質稼働率",
+            line=dict(color=ACCENT, width=3), marker=dict(size=6),
+            hovertemplate="<b>%{x}</b><br>稼働率: %{y:.1f}%<extra></extra>",
+        ))
+        fig.add_hline(y=85, line_dash="dash", line_color="#10B981", annotation_text="健全 (85%+)", annotation_position="right")
+        fig.add_hline(y=70, line_dash="dash", line_color="#F59E0B", annotation_text="注意 (70%)", annotation_position="right")
+        fig.add_hline(y=60, line_dash="dash", line_color=DANGER, annotation_text="危険 (60%)", annotation_position="right")
+        fig.update_yaxes(title="稼働率 %", range=[50, 100])
+        fig.update_xaxes(title="期間")
+        st.plotly_chart(styled_fig(fig, height=320), use_container_width=True)
+        st.markdown("**直近6ヶ月の詳細**")
+        recent = udf.tail(6)[["period", "util_current", "util_prev_month", "util_prev_year_same_month", "teishu_current", "ethylene_kton", "ethylene_mom_pct", "ethylene_yoy_pct"]].copy()
+        recent.columns = ["期間", "当月%", "前月%", "前年同月%", "定修", "エチレン千t", "MoM%", "YoY%"]
+        st.dataframe(recent, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("📰 化学業界 disruption ニュース (Google News)")
+    news_p = latest_parquet(ROOT / "data" / "chem_news", "chem_news")
+    if news_p is None:
+        st.info("ニュース未取得。`uv run python ingest/chem_news_rss.py` 実行。")
+    else:
+        ndf = pd.read_parquet(news_p).sort_values("pub_date_iso", ascending=False)
+        st.caption(
+            f"`{news_p.name}` — {len(ndf)}件 / クエリ {ndf['query_name'].nunique()}種 / "
+            f"ソース {ndf['source_name'].nunique()}媒体"
+        )
+        cn1, cn2 = st.columns([2, 1])
+        with cn1:
+            q_opts = sorted(ndf["query_name"].unique())
+            q_pick = st.multiselect(
+                "クエリ", q_opts, default=q_opts, key="news_q",
+            )
+        with cn2:
+            limit_pick = st.selectbox("表示", [25, 50, 100, 200], index=1, key="news_lim")
+        view = ndf[ndf["query_name"].isin(q_pick)].head(limit_pick).copy()
+        view["link_md"] = view["link"].map(lambda u: f"[詳細]({u})")
+        disp_news = view[["pub_date_iso", "query_name", "source_name", "title", "link_md"]].copy()
+        disp_news.columns = ["公開", "クエリ", "媒体", "タイトル", "リンク"]
+        st.dataframe(disp_news, use_container_width=True, hide_index=True, height=420)
+
+    st.divider()
     st.subheader("🏭 JPCA 月次生産実績 (1999年〜)")
     jpca_p = latest_parquet(ROOT / "data" / "jpca", "jpca_monthly")
     if jpca_p is None:
@@ -1266,6 +1327,8 @@ def render_axis2():
 
     st.divider()
     source_inspector.render_source("comtrade_trade", parquet, key_suffix="axis2")
+    source_inspector.render_source("jpca_utilization", jpca_util_p)
+    source_inspector.render_source("chem_news", news_p)
     source_inspector.render_source("jpca_monthly", jpca_p)
     estat_p = latest_parquet(ROOT / "data" / "estat", "estat_trade")
     source_inspector.render_source("estat_trade", estat_p)
