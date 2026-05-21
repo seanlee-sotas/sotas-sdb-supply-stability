@@ -517,6 +517,81 @@ SOURCE_FLAG = {
     "twse_material_info":   "🇹🇼 TWSE",
 }
 
+CHEMICALS_COMPANY_MAP_P = ROOT / "data" / "chemicals" / "chemicals_company_map.parquet"
+
+
+@st.cache_data
+def _load_company_map() -> pd.DataFrame:
+    if not CHEMICALS_COMPANY_MAP_P.exists():
+        return pd.DataFrame()
+    return pd.read_parquet(CHEMICALS_COMPANY_MAP_P)
+
+
+def _events_for_companies(
+    us_tickers: list, jp_edinet: list, kr_corp: list, tw_tickers: list,
+    df_cls_enriched: pd.DataFrame,
+) -> pd.DataFrame:
+    """Filter enriched classifier output to rows matching any of the given codes."""
+    if df_cls_enriched.empty:
+        return df_cls_enriched
+    # Origin-source-specific matching:
+    # - SEC ticker matches US ticker (handled separately as item801 not in axis6_classified)
+    # - EDINET edinet_code: needs original parquet; we'll match by company name proxy via meta
+    # - DART corp_code: same
+    # - TDnet ticker: 4-digit
+    # - TWSE ticker: 4-digit
+    # Since enriched df has _company and _industry but not direct codes, we need to
+    # re-load origin parquets and join. Simpler: pre-join everything by code here.
+    return _filter_axis6_by_codes(us_tickers, jp_edinet, kr_corp, tw_tickers, df_cls_enriched)
+
+
+def _filter_axis6_by_codes(us, jp_e, kr_c, tw, df_cls):
+    """Join classifier output to origin parquets and filter by company codes."""
+    if df_cls.empty:
+        return df_cls
+    # Load origin parquets
+    edinet_p = latest_parquet(EDINET_EXTRA_DIR, "extraordinary_reports")
+    dart_p = latest_parquet(DART_DIR, "dart_major_matters")
+    tdnet_p = latest_parquet(TDNET_DIR, "tdnet_disclosure")
+    twse_p = latest_parquet(TWSE_DIR, "twse_material_info")
+
+    matched_ids: set[tuple[str, str]] = set()  # (source, source_id)
+
+    if edinet_p and jp_e:
+        odf = pd.read_parquet(edinet_p)
+        hits = odf[odf["edinet_code"].isin(jp_e)]
+        matched_ids.update(("edinet_extraordinary", str(d)) for d in hits["doc_id"])
+    if dart_p and kr_c:
+        odf = pd.read_parquet(dart_p)
+        hits = odf[odf["corp_code"].isin(kr_c)]
+        matched_ids.update(("dart_major_matters", str(r)) for r in hits["rcept_no"])
+    if tdnet_p:
+        odf = pd.read_parquet(tdnet_p)
+        # TDnet uses 4-digit ticker; we accept US-style + jp_e (but JP TDnet → use ticker)
+        # The user-provided tickers in 'us' field are US — TDnet only matches 4-digit JP tickers.
+        # We don't have a separate jp_tickers field; skip TDnet by-code filter for now.
+        # Future: add jp_tickers to seed.
+        pass
+    if twse_p and tw:
+        odf = pd.read_parquet(twse_p)
+        hits = odf[odf["ticker"].isin(tw)]
+        matched_ids.update(("twse_material_info", str(s)) for s in hits["subject"])
+
+    # SEC 8-K is its own dataset (not in axis6_classified). Handled in caller.
+    df_match = df_cls[df_cls.apply(lambda r: (r["source"], str(r["source_id"])) in matched_ids, axis=1)]
+    return df_match
+
+
+def _sec_events_for_tickers(us_tickers: list) -> pd.DataFrame:
+    """Pull SEC 8-K item801 classified HIGH/MED events for given tickers."""
+    if not us_tickers:
+        return pd.DataFrame()
+    cls_p = latest_parquet(SEC_DIR, "item801_classified")
+    if cls_p is None:
+        return pd.DataFrame()
+    df = pd.read_parquet(cls_p)
+    return df[df["ticker"].isin(us_tickers) & df["supply_relevance"].isin(["HIGH", "MED"])]
+
 
 # ---------- tab 6 ----------
 def render_axis6():
@@ -577,6 +652,92 @@ def render_axis6():
             view_disp = view[["_date", "旗", "supply_relevance", "event_type", "_company", "_industry", "summary_ja", "_url"]].copy()
             view_disp.columns = ["日付", "ソース", "重要度", "Event", "企業", "業種", "要約", "リンク"]
             st.dataframe(view_disp, use_container_width=True, hide_index=True, height=420)
+
+    st.divider()
+
+    # === B: 物質ごと 供給途絶イベントカウント (Claude手動マッピング 135物質) ===
+    st.markdown("## 🧪 物質ごと 供給途絶イベントカウント")
+    comp_map = _load_company_map()
+    if comp_map.empty:
+        st.info(
+            "化学品→製造企業マップ未生成。`uv run python ingest/chemicals/build_company_map.py` 実行。"
+        )
+    else:
+        st.caption(
+            f"Claude知識ベースで {len(comp_map)} 物質をマッピング済 "
+            f"(US {(comp_map['us_tickers'].str.len()>0).sum()} / JP {(comp_map['jp_edinet_codes'].str.len()>0).sum()} / "
+            f"KR {(comp_map['kr_corp_codes'].str.len()>0).sum()} / TW {(comp_map['tw_tickers'].str.len()>0).sum()} 物質に主要製造企業)。"
+            "残り 334 物質はカテゴリ偏り (規制POPs/SVHC等) で活発な製造企業不明 — Phase 2 で拡張予定。"
+        )
+
+        # Pre-load classifier output once
+        df_cls_full = _load_axis6_classified()
+        # Aggregate counts per CAS
+        agg_rows = []
+        for _, row in comp_map.iterrows():
+            cas = row["cas"]
+            us_list = list(row["us_tickers"]) if row["us_tickers"] is not None else []
+            jp_list = list(row["jp_edinet_codes"]) if row["jp_edinet_codes"] is not None else []
+            kr_list = list(row["kr_corp_codes"]) if row["kr_corp_codes"] is not None else []
+            tw_list = list(row["tw_tickers"]) if row["tw_tickers"] is not None else []
+            axis6_hits = _filter_axis6_by_codes(us_list, jp_list, kr_list, tw_list, df_cls_full)
+            sec_hits = _sec_events_for_tickers(us_list)
+            high = int((axis6_hits["supply_relevance"] == "HIGH").sum()) + int((sec_hits["supply_relevance"] == "HIGH").sum())
+            med = int((axis6_hits["supply_relevance"] == "MED").sum()) + int((sec_hits["supply_relevance"] == "MED").sum())
+            agg_rows.append({
+                "CAS": cas,
+                "物質名": row["name_en"],
+                "カテゴリ": row["category_norm"],
+                "🚨HIGH": high,
+                "⚠️MED": med,
+                "US社数": len(us_list),
+                "JP社数": len(jp_list),
+                "KR社数": len(kr_list),
+                "TW社数": len(tw_list),
+            })
+        agg_df = pd.DataFrame(agg_rows).sort_values(["🚨HIGH", "⚠️MED"], ascending=[False, False])
+        st.dataframe(agg_df, use_container_width=True, hide_index=True, height=400)
+
+        st.markdown("**🔍 物質を選んで詳細イベント一覧**")
+        cas_options = comp_map["cas"].tolist()
+        cas_pick = st.selectbox(
+            "CAS番号",
+            cas_options,
+            format_func=lambda c: f"{c} — {comp_map[comp_map['cas']==c].iloc[0]['name_en']}",
+            key="axis6_b_cas",
+        )
+        sel = comp_map[comp_map["cas"] == cas_pick].iloc[0]
+        us_list = list(sel["us_tickers"]) if sel["us_tickers"] is not None else []
+        jp_list = list(sel["jp_edinet_codes"]) if sel["jp_edinet_codes"] is not None else []
+        kr_list = list(sel["kr_corp_codes"]) if sel["kr_corp_codes"] is not None else []
+        tw_list = list(sel["tw_tickers"]) if sel["tw_tickers"] is not None else []
+        st.caption(
+            f"**製造企業群:** US={', '.join(us_list) or '—'} | "
+            f"JP edinet={', '.join(jp_list) or '—'} | "
+            f"KR corp={', '.join(kr_list) or '—'} | "
+            f"TW={', '.join(tw_list) or '—'}"
+        )
+        axis6_hits = _filter_axis6_by_codes(us_list, jp_list, kr_list, tw_list, df_cls_full)
+        axis6_hits = _enrich_with_origin(axis6_hits)
+        sec_hits = _sec_events_for_tickers(us_list)
+        if not sec_hits.empty:
+            sec_hits = sec_hits.assign(
+                source="sec_8k_item801",
+                _date=sec_hits["filing_date"],
+                _company=sec_hits["company_name"],
+                _industry="米化学",
+                _url=sec_hits.get("accession_url", ""),
+            )
+            merged = pd.concat([axis6_hits, sec_hits[axis6_hits.columns.tolist() if not axis6_hits.empty else sec_hits.columns]], ignore_index=True)
+        else:
+            merged = axis6_hits
+        if merged.empty:
+            st.info("該当イベントなし")
+        else:
+            merged["旗"] = merged["source"].map(lambda s: SOURCE_FLAG.get(s, "🇺🇸 SEC" if "sec" in str(s) else s))
+            disp = merged.sort_values("_date", ascending=False)[["_date", "旗", "supply_relevance", "event_type", "_company", "summary_ja", "_url"]]
+            disp.columns = ["日付", "ソース", "重要度", "Event", "企業", "要約", "リンク"]
+            st.dataframe(disp, use_container_width=True, hide_index=True, height=320)
 
     st.divider()
 
