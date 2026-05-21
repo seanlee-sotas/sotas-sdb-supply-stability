@@ -79,41 +79,13 @@ def _grade(score: float | None) -> str:
 # ---------------------------------------------------------------------------
 
 def score_axis1(chem: dict) -> dict:
-    """生産能力: ratio of expansion/new vs reduce mentions in EDINET capacity_structured.
-    Searches product/facility/snippet (when available) for broader coverage."""
-    p = _latest(EDINET_DIR, "capacity_structured")
-    if p is None:
-        return {"score": None, "value": "未取得", "note": "EDINET 構造化データなし"}
-    keywords = cl.synonyms_for_search(chem["cas"])
-    if not keywords:
-        return {"score": None, "value": "—", "note": "検索キーワード生成不可"}
-    con = _con()
-    # Match product OR facility (no snippet column in structured parquet)
-    like = " OR ".join(
-        ["product LIKE ?"] * len(keywords)
-        + ["facility LIKE ?"] * len(keywords)
-    )
-    params = [f"%{k}%" for k in keywords] * 2
-    df = con.execute(
-        f"""SELECT direction, COUNT(*) c FROM '{p}'
-            WHERE {like} GROUP BY direction""",
-        params,
-    ).df()
-    if df.empty or df["c"].sum() < 2:
-        return {"score": None, "value": "—", "note": f"言及 {int(df['c'].sum()) if not df.empty else 0}件で評価不可"}
-    counts = {r["direction"]: int(r["c"]) for _, r in df.iterrows()}
-    expand_new = counts.get("expand", 0) + counts.get("new", 0)
-    reduce = counts.get("reduce", 0)
-    maintain = counts.get("maintain", 0)
-    total_signal = expand_new + reduce + maintain
-    if total_signal == 0:
-        return {"score": None, "value": "—", "note": "方向性記述なし"}
-    # Score: positive direction ratio
-    score = (expand_new + maintain * 0.5) / total_signal * 100
+    """軸1は現状 chemical-agnostic な keyword 抽出に依存しており、個別物質の評価には使えない。
+    JA alias 拡充 + capacity_structured.product 紐付け (Phase B) まで全件 None 返却。
+    複合スコアからは MIN_SCORED_AXES ロジックで自動除外される。"""
     return {
-        "score": float(score),
-        "value": f"+{expand_new} / -{reduce} / ={maintain}",
-        "note": f"新増設 {expand_new}件、削減 {reduce}件、維持 {maintain}件",
+        "score": None,
+        "value": "—",
+        "note": "個別物質スコアは Phase B (JA alias生成 + product紐付け) まで保留。企業活動proxyとしては「軸1」タブで閲覧可能。",
     }
 
 

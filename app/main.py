@@ -551,6 +551,12 @@ def render_axis1():
         "化学系443社の有報・統合報告書・中期経営計画から「生産能力」「年産」「設備能力」等のキーワード周辺テキストを抽出。"
         "現在は**スニペット索引**段階。構造化（製品×工場×年間能力 表化）はLLM抽出を別ステップで予定。"
     )
+    st.warning(
+        "⚠️ **このタブは「企業ごとの生産能力言及量」の粗い proxy です。**　"
+        "個別化学品 (CAS) 粒度ではありません — スニペットの抽出トリガーが化学品名ではなく一般キーワード "
+        "（生産能力／設備能力／年産）なので、特定物質にはひもづいていません。"
+        "個別物質ベースの軸1は Phase B (JA alias生成 + product紐付け) で対応予定。"
+    )
     if p is None:
         st.error("`data/edinet/capacity_snippets_*.parquet` なし。`uv run python ingest/edinet_capacity.py` 実行。")
         return
@@ -1137,33 +1143,18 @@ def render_cross():
 
     st.divider()
 
-    # === Axis 1: capacity snippets ===
-    st.subheader("🏭 軸1 生産能力・新増設 — 関連snippet")
-    edinet_p = latest_parquet(EDINET_DIR, "capacity_snippets")
-    keywords = cl.synonyms_for_search(chem["cas"])
-    if edinet_p and keywords:
-        con = duckdb.connect()
-        con.execute(f"CREATE VIEW snip AS SELECT * FROM '{edinet_p}'")
-        like_clauses = " OR ".join(["snippet LIKE ?"] * len(keywords))
-        params = [f"%{k}%" for k in keywords]
-        df = con.execute(
-            f"""SELECT company, period, doctype, snippet
-                FROM snip WHERE {like_clauses}
-                ORDER BY period DESC LIMIT 15""",
-            params,
-        ).df()
-        st.caption(f"検索キーワード: {', '.join(keywords)}")
-        if df.empty:
-            st.info("該当snippetなし")
-        else:
-            for _, r in df.iterrows():
-                with st.expander(f"[{r['company']}] {r['period']} — {r['doctype']}"):
-                    snippet = r["snippet"]
-                    for kw in keywords:
-                        snippet = snippet.replace(kw, f"**{kw}**")
-                    st.markdown(f"> {snippet}")
-    else:
-        st.info("検索キーワード生成不可（物質名なし）")
+    # === Axis 1: per-chemical view disabled — see Phase B plan ===
+    st.subheader("🏭 軸1 生産能力・新増設")
+    st.warning(
+        "**個別物質ベースでは現状未対応**　\n"
+        "EDINET snippet は「生産能力／設備能力／年産」等の一般キーワードで抽出されており、"
+        "化学品 CAS にひもづいていません。chemicals.parquet 469件のうち日本語 alias を持つのは "
+        "17件のみで、残り452件 (96%) は日本語有報を LIKE 検索しても 0 件ヒットになるか、"
+        "ノイズだらけ（タイヤ生産設備・塗装工場など）になります。\n\n"
+        "**次フェーズ (Phase B)**: LLM で全469物質に JA aliases を生成し、"
+        "`capacity_structured.product` 列と紐付けて CAS 粒度に再構築予定。\n\n"
+        "**現状で見たい場合**: 上部の「🏭 軸1 生産能力」タブで企業活動の粗い proxy として閲覧可能。"
+    )
 
     st.divider()
     st.caption(
