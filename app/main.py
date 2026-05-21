@@ -405,12 +405,54 @@ def render_axis5():
     source_inspector.render_source("pops", pops_p)
 
 
+EDINET_EXTRA_DIR = ROOT / "data" / "edinet"
+DART_DIR = ROOT / "data" / "dart"
+TDNET_DIR = ROOT / "data" / "tdnet"
+TWSE_DIR = ROOT / "data" / "twse"
+NITE_DIR = ROOT / "data" / "nite"
+AXIS6_CLS_DIR = ROOT / "data" / "axis6_classified"
+
+
+def _render_disruption_subtab(source_id: str, parquet_path, *, columns, classified_glob: str | None = None):
+    """Helper for each axis6 subsource subtab — table view + LLM-classified HIGH filter."""
+    if parquet_path is None or not Path(parquet_path).exists():
+        st.warning("データ未取得。対応 ingest スクリプトを実行してください。")
+        return
+    con = duckdb.connect()
+    try:
+        df = con.execute(f"SELECT {', '.join(columns)} FROM '{parquet_path}' ORDER BY 1 DESC LIMIT 100").df()
+    except Exception as e:
+        st.error(f"読み込み失敗: {e}")
+        return
+    st.caption(f"`{Path(parquet_path).name}` — 直近100件")
+    st.dataframe(df, use_container_width=True, hide_index=True, height=400)
+
+    # Optional LLM-classified HIGH supply_relevance rows for this source
+    if classified_glob:
+        from glob import glob
+        files = sorted(glob(str(AXIS6_CLS_DIR / classified_glob)))
+        if files:
+            cls = pd.read_parquet(files[-1])
+            high = cls[cls["supply_relevance"] == "HIGH"]
+            if len(high):
+                st.markdown(f"**🚨 LLM分類 HIGH 供給関連イベント ({len(high)}件)**")
+                st.dataframe(
+                    high[["source_id", "event_type", "summary_ja", "key_facility", "key_product"]],
+                    use_container_width=True, hide_index=True, height=240,
+                )
+            else:
+                st.success("✅ 直近の分類結果に HIGH 供給関連イベントなし")
+
+
 # ---------- tab 6 ----------
 def render_axis6():
     sec_p = latest_parquet(SEC_DIR, "filings_8k")
 
     st.info(
-        "**軸6「過去の供給途絶」** | SEC EDGAR 8-K（米化学メジャー15社の臨時開示）。"
+        "**軸6「過去の供給途絶」** | SEC EDGAR 8-K（米化学メジャー15社の臨時開示）"
+        " + 日本 (EDINET臨時報告書・TDnet適時開示・NITE化学事故)"
+        " + 韓国 (DART 주요사항보고서)"
+        " + 台湾 (TWSE/TPEX 重大訊息)。"
         "Item 8.01 (Other Events) と Item 2.06 (Material Impairments) が FM 発令・大規模事故・撤退の主な箱。"
         "出現頻度がその企業/業界のオペレーションリスクの粗い代理指標。"
     )
@@ -537,9 +579,63 @@ def render_axis6():
             st.dataframe(disp, use_container_width=True, hide_index=True)
 
     st.divider()
+    st.markdown("### 🌏 JP / KR / TW 拡張ソース (2026-05 追加)")
+    edinet_ex_p = latest_parquet(EDINET_EXTRA_DIR, "extraordinary_reports")
+    dart_p = latest_parquet(DART_DIR, "dart_major_matters")
+    tdnet_p = latest_parquet(TDNET_DIR, "tdnet_disclosure")
+    twse_p = latest_parquet(TWSE_DIR, "twse_material_info")
+    nite_p = latest_parquet(NITE_DIR, "nite_accidents")
+
+    asia_tabs = st.tabs([
+        "🇯🇵 EDINET 臨時",
+        "🇯🇵 TDnet 適時",
+        "🇰🇷 DART 주요사항",
+        "🇹🇼 TWSE 重大訊息",
+        "🇯🇵 NITE 化学事故",
+    ])
+    with asia_tabs[0]:
+        _render_disruption_subtab(
+            "edinet_extraordinary", edinet_ex_p,
+            columns=["submit_date", "company", "industry", "doc_description", "viewer_url"],
+            classified_glob="edinet_extraordinary_classified_*.parquet",
+        )
+    with asia_tabs[1]:
+        _render_disruption_subtab(
+            "tdnet_disclosure", tdnet_p,
+            columns=["date", "time", "company", "industry", "title", "pdf_url"],
+            classified_glob="tdnet_disclosure_classified_*.parquet",
+        )
+    with asia_tabs[2]:
+        _render_disruption_subtab(
+            "dart_major_matters", dart_p,
+            columns=["rcept_dt", "corp_name", "industry", "report_nm", "viewer_url"],
+            classified_glob="dart_major_matters_classified_*.parquet",
+        )
+    with asia_tabs[3]:
+        _render_disruption_subtab(
+            "twse_material_info", twse_p,
+            columns=["filing_date", "filing_time", "company_name", "market", "subject"],
+            classified_glob="twse_material_info_classified_*.parquet",
+        )
+    with asia_tabs[4]:
+        _render_disruption_subtab(
+            "nite_accidents", nite_p,
+            columns=["date", "title", "url"],
+        )
+
+    st.divider()
     st.markdown("### 📂 ソース生データ — 軸6 過去の供給途絶")
     source_inspector.render_source("sec_8k", sec_p)
     source_inspector.render_source("sec_item801", classified_p)
+    source_inspector.render_source("edinet_extraordinary", edinet_ex_p)
+    source_inspector.render_source("dart_major_matters", dart_p)
+    source_inspector.render_source("tdnet_disclosure", tdnet_p)
+    source_inspector.render_source("twse_material_info", twse_p)
+    source_inspector.render_source("nite_accidents", nite_p)
+    from glob import glob
+    axis6_cls_files = sorted(glob(str(AXIS6_CLS_DIR / "*_classified_*.parquet")))
+    if axis6_cls_files:
+        source_inspector.render_source("axis6_classified", Path(axis6_cls_files[-1]))
 
 
 # ---------- tab 1 ----------
