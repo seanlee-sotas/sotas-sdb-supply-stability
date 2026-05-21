@@ -114,11 +114,76 @@ elif axis == "axis4":
     st.subheader("🌐 軸4 地政学・原産地集中")
     st.caption(
         "UN Comtrade 世界輸出データから HHI を算出、Top輸出国上位5を抽出。"
+        "**生産段階の集中度** は USGS / 戦略物資フラグ / FAOSTAT NR で補強。"
     )
     source_inspector.render_source(
         "comtrade_trade", latest_parquet(DATA / "comtrade", "trade"),
         key_suffix="axis4", expanded=True,
     )
+
+    st.markdown("---")
+    st.markdown("### 🌐 地政学拡張データ (Comtrade を超えた生産段階)")
+
+    # USGS Mineral Commodity Summaries
+    usgs_p = latest_parquet(DATA / "usgs", "mineral_concentration")
+    usgs_p = usgs_p if usgs_p and "summary" not in usgs_p.stem else find_glob(DATA / "usgs", "mineral_concentration_2*.parquet")
+    if usgs_p and usgs_p.exists():
+        with st.expander("⛏ USGS Mineral Commodity Summaries 2025 — 鉱物国別生産シェア", expanded=False):
+            import pandas as pd
+            usgs_df = pd.read_parquet(usgs_p)
+            st.markdown(
+                f"**出典**: [USGS MCS 2025](https://pubs.usgs.gov/periodicals/mcs2025/)  "
+                f"  ·  **データ年**: {usgs_df['source_year'].iloc[0]}  "
+                f"  ·  **対象元素**: {usgs_df['element'].nunique()}種類  "
+                f"  ·  **粒度**: 元素 × 国別生産シェア"
+            )
+            st.markdown(
+                "**カラム定義**: element=元素記号 / name=鉱物名 / country=生産国 / share_pct=世界シェア(%) / unit=単位 / source_year=データ年"
+            )
+            st.dataframe(usgs_df, use_container_width=True, height=420)
+
+        usgs_sum_p = find_glob(DATA / "usgs", "mineral_concentration_summary_*.parquet")
+        if usgs_sum_p and usgs_sum_p.exists():
+            with st.expander("⛏ USGS 元素別 HHI サマリー", expanded=False):
+                sum_df = pd.read_parquet(usgs_sum_p)
+                st.dataframe(sum_df.sort_values("hhi", ascending=False), use_container_width=True)
+
+    # Strategic Materials Flag (EU CRMA + US Critical + METI)
+    strat_p = latest_parquet(DATA / "regulations", "strategic_materials")
+    if strat_p and strat_p.exists():
+        with st.expander("🏛 戦略物資 3国認定フラグ (EU CRMA / US Critical / METI)", expanded=False):
+            import pandas as pd
+            strat_df = pd.read_parquet(strat_p)
+            st.markdown(
+                "**3地域の戦略原材料リスト統合**:  \n"
+                "- 🇪🇺 EU CRMA 2024 (Regulation 2024/1252) — Strategic 16 + Critical 34  \n"
+                "- 🇺🇸 US DOI/USGS Critical Minerals List 2022 (50物質)  \n"
+                "- 🇯🇵 METI 特定重要物資 (経済安全保障推進法、2022認定)"
+            )
+            st.markdown(
+                "**カラム定義**: token / cas / name / element / eu_strategic / eu_critical / "
+                "us_critical_2022 / meti_critical / strategic_count (3国中認定数)"
+            )
+            st.dataframe(strat_df.sort_values("strategic_count", ascending=False), use_container_width=True)
+
+    # FAOSTAT Natural Rubber
+    fao_p = latest_parquet(DATA / "faostat", "natural_rubber_production")
+    if fao_p and fao_p.exists():
+        with st.expander("🌱 FAOSTAT 天然ゴム国別生産", expanded=False):
+            import pandas as pd
+            fao_df = pd.read_parquet(fao_p)
+            latest_year = fao_df['year'].max()
+            sub = fao_df[fao_df['year'] == latest_year].sort_values("value", ascending=False)
+            source = sub['source'].iloc[0] if 'source' in sub.columns else "FAOSTAT"
+            st.markdown(
+                f"**出典**: {source}  ·  **対象年**: {latest_year}  ·  **対象国**: {sub['area'].nunique()}"
+            )
+            if source == "ANRPC_IRSG_CURATED":
+                st.warning(
+                    "FAOSTAT API が一時的にダウンしているため、ANRPC/IRSG 公開2023年値で代用しています。"
+                    "API復活時に自動で本データに切り替わります。"
+                )
+            st.dataframe(sub, use_container_width=True)
 
 elif axis == "axis5":
     st.subheader("📋 軸5 規制・政策")

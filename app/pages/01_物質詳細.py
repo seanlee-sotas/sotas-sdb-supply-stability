@@ -5,12 +5,82 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import sumitomo_loader as sl  # noqa: E402
 import scoring  # noqa: E402
+
+# CAS / id → USGS 鉱物データ element key (data/usgs/mineral_concentration*.parquet 参照用)
+CAS_TO_USGS_ELEMENT = {
+    "7440-33-7":   "W",
+    "1314-13-2":   "Zn",
+    "12136-58-2":  "Li",
+    "7782-42-5":   "C_graphite",
+    "7704-34-9":   "S",
+    "7631-86-9":   "Si_metal",
+}
+ID_TO_USGS_ELEMENT = {
+    "titanium_alloy":  "Ti",
+    "steel_cord":      "Cu",  # 真鍮メッキ
+}
+
+# 戦略物資フラグ参照用 token
+CAS_TO_STRATEGIC_TOKEN = {
+    "7440-33-7":  "W",
+    "1314-13-2":  "Zn",
+    "12136-58-2": "Li",
+    "7782-42-5":  "C_graphite",
+    "7704-34-9":  "S",
+    "7631-86-9":  "Si_metal",
+    "9006-04-6":  "natural_rubber",
+}
+ID_TO_STRATEGIC_TOKEN = {
+    "titanium_alloy": "Ti",
+    "steel_cord": "Cu",
+    "automotive_semiconductor": "semiconductor",
+    "li_s_battery_sulfur": "battery",
+    "li_compounds": "Li",
+    "graphene": "C_graphite",
+}
+
+# 天然ゴム系物質 (FAOSTAT 国別生産表示対象)
+NR_CASES = {"9006-04-6"}
+NR_IDS = {
+    "eudr_compliant_nr", "enr_epoxidized_nr", "dpnr_high_purity",
+    "ldp_natural_rubber_latex", "high_damping_rubber",
+    "new_marine_fender",
+}
+
+
+@st.cache_data(show_spinner=False)
+def _load_usgs_concentration() -> pd.DataFrame:
+    base = Path(__file__).resolve().parents[2] / "data" / "usgs"
+    files = sorted(base.glob("mineral_concentration_2*.parquet"))
+    files = [f for f in files if "summary" not in f.stem]
+    if not files:
+        return pd.DataFrame()
+    return pd.read_parquet(files[-1])
+
+
+@st.cache_data(show_spinner=False)
+def _load_strategic_flags() -> pd.DataFrame:
+    base = Path(__file__).resolve().parents[2] / "data" / "regulations"
+    files = sorted(base.glob("strategic_materials_*.parquet"))
+    if not files:
+        return pd.DataFrame()
+    return pd.read_parquet(files[-1])
+
+
+@st.cache_data(show_spinner=False)
+def _load_faostat_nr() -> pd.DataFrame:
+    base = Path(__file__).resolve().parents[2] / "data" / "faostat"
+    files = sorted(base.glob("natural_rubber_production_*.parquet"))
+    if not files:
+        return pd.DataFrame()
+    return pd.read_parquet(files[-1])
 
 
 def _val(v):
@@ -326,6 +396,162 @@ else:
 
                 detail = s.get("detail") or s.get("rationale") or s.get("reason") or "—"
                 cols[2].caption(str(detail)[:300])
+
+        # ---------------------------------------------------------------
+        # 地政学・生産地集中 拡張データ (軸4 補強)
+        # ---------------------------------------------------------------
+        st.markdown("### 🌐 地政学・生産地集中 — 拡張データ")
+        st.caption(
+            "軸4 (Comtrade HS6 HHI) では拾えない **生産段階の集中度・政策認定リスク** を3ソースで補強します。"
+        )
+
+        usgs_element = CAS_TO_USGS_ELEMENT.get(m.get("cas")) or ID_TO_USGS_ELEMENT.get(m["id"])
+        strategic_token = CAS_TO_STRATEGIC_TOKEN.get(m.get("cas")) or ID_TO_STRATEGIC_TOKEN.get(m["id"])
+        is_nr = (m.get("cas") in NR_CASES) or (m["id"] in NR_IDS)
+
+        if not any([usgs_element, strategic_token, is_nr]):
+            st.info(
+                "この物質は USGS 鉱物・戦略物資・FAOSTAT NR の3拡張データには対応していません "
+                "(配合系・複合素材・有機ポリマー等)。軸4 は Comtrade HS6 のみで評価しています。"
+            )
+        else:
+            geo_tabs = []
+            if usgs_element:
+                geo_tabs.append("⛏ USGS 国別生産シェア")
+            if strategic_token:
+                geo_tabs.append("🏛 戦略物資 3国認定フラグ")
+            if is_nr:
+                geo_tabs.append("🌱 FAOSTAT 天然ゴム国別生産")
+
+            tabs_geo = st.tabs(geo_tabs)
+            i = 0
+
+            if usgs_element:
+                with tabs_geo[i]:
+                    usgs_df = _load_usgs_concentration()
+                    sub = usgs_df[usgs_df["element"] == usgs_element].copy()
+                    if len(sub):
+                        sub = sub.sort_values("share_pct", ascending=False)
+                        elem_name = sub.iloc[0]["name"]
+                        st.markdown(
+                            f"**鉱物**: {elem_name} (元素: `{usgs_element}`)  "
+                            f"  ·  **データ年**: {sub.iloc[0]['source_year']}  "
+                            f"  ·  **出典**: USGS Mineral Commodity Summaries 2025"
+                        )
+                        # 棒グラフ
+                        fig = px.bar(
+                            sub, x="country", y="share_pct",
+                            text="share_pct",
+                            color="share_pct",
+                            color_continuous_scale="Reds",
+                            title=f"{elem_name} — 国別生産シェア (世界, {sub.iloc[0]['source_year']})",
+                        )
+                        fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+                        fig.update_layout(
+                            height=380, template="simple_white",
+                            showlegend=False, coloraxis_showscale=False,
+                            yaxis_title="世界生産シェア (%)",
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                        # HHI 計算
+                        hhi = float(((sub[sub["country"] != "Others"]["share_pct"]) ** 2).sum())
+                        band = "🔴 高集中" if hhi >= 2500 else ("🟡 中集中" if hhi >= 1500 else "🟢 低集中")
+                        top = sub[sub["country"] != "Others"].iloc[0]
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("HHI", f"{hhi:.0f}", band)
+                        c2.metric("Top 国", top["country"], f"{top['share_pct']:.1f}%")
+                        c3.metric("対象元素", usgs_element)
+                    else:
+                        st.info(f"USGS データに `{usgs_element}` のエントリなし")
+                i += 1
+
+            if strategic_token:
+                with tabs_geo[i]:
+                    flags_df = _load_strategic_flags()
+                    hit = flags_df[flags_df["token"] == strategic_token]
+                    if len(hit):
+                        h = hit.iloc[0]
+                        sc = int(h["strategic_count"])
+                        # 大判表示
+                        color = ["#10B981", "#F59E0B", "#EF4444", "#7C3AED"][min(sc, 3)]
+                        st.markdown(
+                            f"<div style='background:{color};color:white;padding:0.8em 1em;"
+                            f"border-radius:0.5em;text-align:center;'>"
+                            f"<span style='font-size:0.85em;'>3地域中 戦略認定</span><br>"
+                            f"<span style='font-size:2.5em;font-weight:700;'>{sc} / 3</span><br>"
+                            f"<span style='font-size:0.9em;'>{h['name']}</span>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.markdown("")
+                        c1, c2, c3 = st.columns(3)
+                        with c1:
+                            st.markdown("**🇪🇺 EU CRMA 2024**")
+                            if bool(h["eu_strategic"]):
+                                st.success("✅ Strategic Raw Material (Annex I)")
+                            elif bool(h["eu_critical"]):
+                                st.warning("⚠️ Critical Raw Material (Annex II)")
+                            else:
+                                st.caption("— 未認定")
+                            st.caption(h["eu_source"])
+                        with c2:
+                            st.markdown("**🇺🇸 US Critical 2022**")
+                            if bool(h["us_critical_2022"]):
+                                st.success("✅ 50 Critical Minerals list")
+                            else:
+                                st.caption("— 未認定")
+                            st.caption(h["us_source"])
+                        with c3:
+                            st.markdown("**🇯🇵 METI 特定重要物資**")
+                            if bool(h["meti_critical"]):
+                                st.success(f"✅ {h['meti_category']}")
+                            else:
+                                st.caption("— 未認定")
+                            st.caption(h["jp_source"])
+                    else:
+                        st.info(f"戦略物資データに `{strategic_token}` のエントリなし")
+                i += 1
+
+            if is_nr:
+                with tabs_geo[i]:
+                    fao_df = _load_faostat_nr()
+                    if len(fao_df):
+                        latest_year = int(fao_df["year"].max())
+                        latest = fao_df[fao_df["year"] == latest_year].copy()
+                        total = float(latest["value"].sum())
+                        latest["share_pct"] = latest["value"] / total * 100
+                        latest = latest.sort_values("share_pct", ascending=False)
+
+                        st.markdown(
+                            f"**国別 天然ゴム生産量** ({latest_year}年, {latest['unit'].iloc[0]})  "
+                            f"  ·  **総生産**: {total:,.0f} kt  "
+                            f"  ·  **出典**: {latest.iloc[0]['source']}"
+                        )
+                        fig = px.bar(
+                            latest.head(15), x="area", y="share_pct", text="share_pct",
+                            color="share_pct", color_continuous_scale="Greens",
+                            title=f"天然ゴム 国別生産シェア ({latest_year}年)",
+                        )
+                        fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+                        fig.update_layout(
+                            height=380, template="simple_white",
+                            showlegend=False, coloraxis_showscale=False,
+                            yaxis_title="世界生産シェア (%)",
+                            xaxis_title="",
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        hhi_nr = float((latest["share_pct"] ** 2).sum())
+                        band = "🔴 高集中" if hhi_nr >= 2500 else ("🟡 中集中" if hhi_nr >= 1500 else "🟢 低集中")
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("HHI", f"{hhi_nr:.0f}", band)
+                        c2.metric("Top 国", latest.iloc[0]["area"], f"{latest.iloc[0]['share_pct']:.1f}%")
+                        c3.metric("ASEAN 5国合計",
+                                  f"{latest[latest['area'].isin(['Thailand','Indonesia','Vietnam','Malaysia','Cambodia'])]['share_pct'].sum():.1f}%",
+                                  "EUDR 主要対象地域")
+                    else:
+                        st.info("FAOSTAT NR データ未取得")
+                i += 1
 
         st.markdown("### 総評")
         if comp and sub:
