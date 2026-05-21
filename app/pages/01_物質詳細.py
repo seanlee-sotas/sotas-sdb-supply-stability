@@ -88,8 +88,12 @@ if m is None:
 # pandas DataFrame → dict は None を NaN に変換するため、表示前にクリーンアップ
 for k in ("cas", "pubchem_cid", "iupac_name", "molecular_formula", "molecular_weight",
           "inchikey", "smiles", "category_norm", "hs6", "hs_label", "usage_note",
-          "name_en", "risk_tags"):
+          "name_en", "risk_tags", "is_pseudo_cas"):
     m[k] = _val(m.get(k))
+
+# pseudo CAS の物質も scoring 可能。UI 表示では「未確定」扱いだが scoring には渡す
+m["display_cas"] = m["cas"] if not m.get("is_pseudo_cas") else None
+m["scoring_cas"] = m["cas"]  # always pass to scoring (pseudo CAS は chemicals.parquet にエントリ済み)
 
 layer = layers[m["evidence_layer"]]
 seg = segments[m["primary_segment"]]
@@ -128,7 +132,10 @@ with col_left:
 with col_right:
     status_emoji = "⭐ いま使っている (pinned)" if m["status"] == "pinned" else "👀 これから使いたい (watch)"
     st.markdown(f"### {status_emoji}")
-    st.metric("CAS", m["cas"] if m["cas"] else "未確定")
+    if m.get("is_pseudo_cas"):
+        st.metric("CAS", "未確定", f"pseudo: {m['cas']}")
+    else:
+        st.metric("CAS", m["cas"] if m["cas"] else "未確定")
     if m["pubchem_cid"]:
         st.metric("PubChem CID", f"{int(m['pubchem_cid'])}")
     if m["hs6"]:
@@ -201,6 +208,11 @@ if not m["cas"]:
     )
     st.info("CAS未確定物質も含めて評価する手法は **[📚 出典・methodology]** ページの「未確定物質の扱い」セクション参照")
 else:
+    if m.get("is_pseudo_cas"):
+        st.info(
+            f"ℹ️ この物質は配合系・業界常識ベースのため CAS未確定です。**pseudo CAS** `{m['cas']}` を発行して "
+            f"HS6 推定・規制リスト・SECイベント等のスコアを計算しています（出典 layer B/C）。"
+        )
     industry = st.selectbox(
         "業界別重みプロファイル",
         options=["default", "rubber_tire", "semiconductor", "pharma_intermediate", "commodity_plastic"],
@@ -241,7 +253,7 @@ else:
                 "axis1_capacity": "🏭 軸1\n生産能力",
                 "axis2_supply_demand": "⚖️ 軸2\n需給",
                 "axis3_jp_concentration": "🤝 軸3\n国内集中",
-                "axis4_geopolitical": "🌐 軸4\n地政学",
+                "axis4_global_hhi": "🌐 軸4\n地政学",
                 "axis5_regulation": "📋 軸5\n規制",
                 "axis6_events": "💥 軸6\n供給途絶",
                 "axis7_price": "💹 軸7\n価格変動",
@@ -291,7 +303,7 @@ else:
             ("axis1_capacity", "🏭 軸1 生産能力・新増設"),
             ("axis2_supply_demand", "⚖️ 軸2 需給バランス"),
             ("axis3_jp_concentration", "🤝 軸3 国内供給集中度"),
-            ("axis4_geopolitical", "🌐 軸4 地政学・原産地集中"),
+            ("axis4_global_hhi", "🌐 軸4 地政学・原産地集中"),
             ("axis5_regulation", "📋 軸5 規制・政策"),
             ("axis6_events", "💥 軸6 過去の供給途絶イベント"),
             ("axis7_price", "💹 軸7 価格変動性"),

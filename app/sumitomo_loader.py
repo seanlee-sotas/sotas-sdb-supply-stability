@@ -70,7 +70,7 @@ AXIS_LABELS = {
     "axis1_capacity": "🏭 軸1 生産能力",
     "axis2_supply_demand": "⚖️ 軸2 需給",
     "axis3_jp_concentration": "🤝 軸3 国内集中",
-    "axis4_geopolitical": "🌐 軸4 地政学",
+    "axis4_global_hhi": "🌐 軸4 地政学",
     "axis5_regulation": "📋 軸5 規制",
     "axis6_events": "💥 軸6 供給途絶",
     "axis7_price": "💹 軸7 価格変動",

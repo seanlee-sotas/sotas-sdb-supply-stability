@@ -42,6 +42,11 @@ def main():
 
     for m in materials:
         cas = m.get("cas")
+        is_pseudo_cas = False
+        if not cas:
+            # Pseudo CAS scheme matches ingest/sumitomo_data_expand._pseudo_cas
+            cas = f"SR-{m['id'].upper().replace('_', '-')[:48]}"
+            is_pseudo_cas = True
         chem_row = chem_idx.loc[cas].to_dict() if cas and cas in chem_idx.index else {}
 
         hs6 = m.get("hs6_override")
@@ -57,6 +62,7 @@ def main():
         row = {
             "id": m["id"],
             "cas": cas,
+            "is_pseudo_cas": is_pseudo_cas,
             "name_ja": m["name_ja"],
             "name_en": m.get("name_en"),
             "aliases": json.dumps(m.get("aliases", []), ensure_ascii=False),
