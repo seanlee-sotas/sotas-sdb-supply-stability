@@ -112,7 +112,7 @@ if axis == "axis1":
 elif axis == "axis2":
     st.subheader("⚖️ 軸2 需給バランス")
     st.caption(
-        "UN Comtrade 純輸出比率 (X-M)/(X+M) + JPCA エチレン稼働率 + 化学業界 disruption ニュース。"
+        "UN Comtrade 純輸出比率 (X-M)/(X+M) + JPCA エチレン稼働率 + 化学業界 disruption ニュース + **METI 化学工業生産動態統計 (v3新規)**。"
     )
     source_inspector.render_source(
         "comtrade_trade", latest_parquet(DATA / "comtrade", "trade"),
@@ -128,10 +128,30 @@ elif axis == "axis2":
         "chem_news", latest_parquet(DATA / "news", "chem_news")
     )
 
+    # v3: METI 化学工業生産動態統計
+    meti_prod_p = latest_parquet(DATA / "meti_prod", "chemical_production")
+    if meti_prod_p and meti_prod_p.exists():
+        with st.expander("🏭 METI 化学工業生産動態統計 — 国内品目別月次生産 (v3新規)", expanded=False):
+            import pandas as pd
+            df_m = pd.read_parquet(meti_prod_p)
+            st.markdown(
+                "**出典**: [METI 化学工業生産動態統計](https://www.meti.go.jp/statistics/tyo/seidou/result-2.html)  "
+                f"  ·  **対象年**: {df_m['year'].iloc[0]}  ·  **品目数**: {df_m['product'].nunique()}"
+            )
+            st.markdown(
+                "**カラム定義**: product (品目) / category / sumitomo_cas (関連CAS) / "
+                "year / month / date / production_kt / annual_kt / source"
+            )
+            st.dataframe(df_m, use_container_width=True, height=400)
+        meti_sum_p = find_glob(DATA / "meti_prod", "chemical_production_summary_*.parquet")
+        if meti_sum_p:
+            with st.expander("🏭 METI 品目別 年間/季節性サマリー", expanded=False):
+                st.dataframe(pd.read_parquet(meti_sum_p), use_container_width=True)
+
 elif axis == "axis3":
     st.subheader("🤝 軸3 国内供給集中度")
     st.caption(
-        "EDINET スニペット + 手動マッピングで、各CASに対する国内上場サプライヤー数を集計（3バンド分類）。"
+        "EDINET スニペット + 手動マッピング (既存) + **環境省 PRTR 実取扱量ベース (v3新規)**。"
     )
     source_inspector.render_source(
         "jp_supplier",
@@ -139,6 +159,41 @@ elif axis == "axis3":
         or (DATA / "chemicals" / "chemicals_company_map.parquet"),
         expanded=True,
     )
+
+    st.markdown("---")
+    st.markdown("### 🥇 v3新規: 環境省 PRTR — CAS×事業所×取扱量")
+    st.markdown(
+        "**PRTRデータの破壊力**: 軸3 を「有報スニペット言及社数 (proxy)」から「**実取扱量(kt/年)ベース**」に格上げ。"
+        "CAS 逆引きで「6PPDを取扱う日本企業」「カーボンブラック生産事業所」が即出る。"
+    )
+    prtr_p = latest_parquet(DATA / "prtr", "prtr_by_cas")
+    if prtr_p and prtr_p.exists():
+        with st.expander("🇯🇵 環境省 PRTR 事業所別データ", expanded=True):
+            import pandas as pd
+            df_prtr = pd.read_parquet(prtr_p)
+            st.markdown(
+                f"**出典**: [環境省 PRTR排出移動量データベース]({df_prtr['source_url'].iloc[0]})  "
+                f"  ·  **対象年**: {df_prtr['year'].iloc[0]}  ·  **対象CAS**: {df_prtr['cas'].nunique()}  "
+                f"  ·  **事業所数**: {df_prtr['company'].nunique()}"
+            )
+            st.markdown(
+                "**カラム定義**: cas / name / company (取扱企業) / site (所在地) / "
+                "release_kg (大気/水排出 kg/年) / transfer_kg (移動量 kg/年) / handled_kt (取扱量 kt/年)"
+            )
+            st.dataframe(df_prtr.sort_values(["cas", "handled_kt"], ascending=[True, False]),
+                         use_container_width=True, height=420)
+
+    prtr_sum_p = latest_parquet(DATA / "prtr", "prtr_cas_summary")
+    if prtr_sum_p and prtr_sum_p.exists():
+        with st.expander("🇯🇵 PRTR CAS別 集中度サマリー", expanded=True):
+            import pandas as pd
+            df_s = pd.read_parquet(prtr_sum_p)
+            st.markdown(
+                "**concentration_band**: high (1-2社) / medium (3-5社) / low (6社以上)。"
+                "「**従来の有報スニペット count**」と PRTR の「**実取扱量ベース集中度**」を比較すると、"
+                "後者の方が「現に誰が取り扱っているか」を反映していて軸3の判断に強い。"
+            )
+            st.dataframe(df_s.sort_values("n_sites"), use_container_width=True)
 
 elif axis == "axis4":
     st.subheader("🌐 軸4 地政学・原産地集中")
@@ -215,10 +270,61 @@ elif axis == "axis4":
                 )
             st.dataframe(sub, use_container_width=True)
 
+    st.markdown("---")
+    st.markdown("### 🥈 v3新規: EM-DAT 自然災害 × 産国")
+    st.markdown(
+        "**地政学×自然災害**: 軸4 集中産国で発生した災害履歴を重ねると、**「タイ洪水時にNR供給途絶」「Texas 冬寒波で米国SBR能力60%停止」**等の "
+        "「平時のHHI上は問題ないが、災害時に詰む」リスクが定量化できる。SDB独自のクロス軸。"
+    )
+    emdat_p = latest_parquet(DATA / "emdat", "disasters")
+    if emdat_p and emdat_p.exists():
+        with st.expander("🌪 EM-DAT 自然災害DB (1990-2024 主要災害)", expanded=False):
+            import pandas as pd
+            ed_df = pd.read_parquet(emdat_p)
+            st.markdown(
+                f"**出典**: [EM-DAT / CRED]({ed_df['source_url'].iloc[0]})  "
+                f"  ·  **件数**: {len(ed_df)}  ·  **国数**: {ed_df['country'].nunique()}  "
+                f"  ·  **災害種別**: {ed_df['disaster_type'].nunique()}"
+            )
+            st.markdown(
+                "**カラム定義**: country / iso3 / year / disaster_type / event_name / "
+                "deaths / affected_m (百万人) / damage_usd_m (百万USD) / industry_impact (sumitomo 関連業界影響)"
+            )
+            st.dataframe(ed_df.sort_values(["country", "year"]), use_container_width=True, height=420)
+
+    emdat_sum_p = latest_parquet(DATA / "emdat", "disasters_country_summary")
+    if emdat_sum_p and emdat_sum_p.exists():
+        with st.expander("🌪 国別災害スコア", expanded=False):
+            st.dataframe(
+                pd.read_parquet(emdat_sum_p).sort_values("disaster_score", ascending=False),
+                use_container_width=True,
+            )
+
+    st.markdown("---")
+    st.markdown("### 🥉 v3新規: USDA FAS PSD 農産物")
+    st.markdown(
+        "**バイオ原料の上流**: バイオポリオール (Z-STAR XV) のトウモロコシ、テニスフェルトのコットン、籾殻シリカの米、"
+        "ヤシ油代替パーム油 — **農産物の国別集中度・季節リスク** を SDB に。"
+    )
+    usda_p = latest_parquet(DATA / "usda", "psd_crops")
+    if usda_p and usda_p.exists():
+        with st.expander("🌾 USDA FAS PSD 国別生産", expanded=False):
+            import pandas as pd
+            u_df = pd.read_parquet(usda_p)
+            st.markdown(
+                f"**出典**: [USDA FAS PSD]({u_df['source_url'].iloc[0]})  "
+                f"  ·  **作物**: {u_df['commodity'].nunique()}  ·  **国数**: {u_df['country'].nunique()}"
+            )
+            st.dataframe(u_df, use_container_width=True, height=400)
+    usda_sum_p = latest_parquet(DATA / "usda", "psd_summary")
+    if usda_sum_p and usda_sum_p.exists():
+        with st.expander("🌾 作物別 HHI サマリー", expanded=False):
+            st.dataframe(pd.read_parquet(usda_sum_p).sort_values("hhi", ascending=False), use_container_width=True)
+
 elif axis == "axis5":
     st.subheader("📋 軸5 規制・政策")
     st.caption(
-        "ECHA SVHC (REACH高懸念物質候補) + METI 特定重要物資 + Stockholm POPs (残留性有機汚染物質)。"
+        "ECHA SVHC (候補) + METI 特定重要物資 + Stockholm POPs + **ECHA REACH Restriction/Authorization (v3新規、規制段階が進んだ物質)**。"
     )
     source_inspector.render_source(
         "echa_svhc", latest_parquet(DATA / "echa", "svhc"), expanded=True,
@@ -229,6 +335,27 @@ elif axis == "axis5":
     source_inspector.render_source(
         "pops", latest_parquet(DATA / "regulations", "pops")
     )
+
+    st.markdown("---")
+    st.markdown("### 🆕 v3新規: ECHA REACH Restriction / Authorization")
+    st.markdown(
+        "**SVHC候補の一段上**: Annex XVII (使用制限決定) / Annex XIV (認可必要) に挙がっている物質。"
+        "PFOA・DEHP・MBT等、住友ゴム関連で **既に規制が決まっている物質** を即座に把握できる。"
+    )
+    reach_p = latest_parquet(DATA / "echa", "reach_regulation")
+    if reach_p and reach_p.exists():
+        with st.expander("🇪🇺 ECHA Annex XVII / XIV 規制リスト", expanded=True):
+            import pandas as pd
+            r_df = pd.read_parquet(reach_p)
+            st.markdown(
+                f"**出典**: [ECHA Restricted substances]({r_df['source_url'].iloc[0]})  "
+                f"  ·  **件数**: {len(r_df)}  ·  **タイプ**: {r_df['list_type'].nunique()}"
+            )
+            st.markdown(
+                "**カラム定義**: cas / name / list_type (Restriction/Authorization/Watch/Proposal) / "
+                "annex (Annex XVII or XIV) / entry_date / restriction_summary / sumitomo_relevance"
+            )
+            st.dataframe(r_df, use_container_width=True, height=420)
 
 elif axis == "axis6":
     st.subheader("💥 軸6 過去の供給途絶イベント")
@@ -262,15 +389,85 @@ elif axis == "axis6":
         latest_parquet(DATA / "nite", "nite_accidents"),
     )
 
+    st.markdown("---")
+    st.markdown("### 🆕 v3新規: SEC 10-K Risk Factor (構造リスク)")
+    st.markdown(
+        "**8-K 臨時開示** に加えて **10-K 年次報告書の Risk Factor 章** から、各社が構造的に開示する"
+        "サプライ・地政学・規制リスクを取得。長期トレンドの捕捉に有効。"
+    )
+    risk10k_p = latest_parquet(DATA / "sec", "risk_factors_10k")
+    if risk10k_p and risk10k_p.exists():
+        with st.expander("📜 SEC 10-K Risk Factor テーマ", expanded=False):
+            import pandas as pd
+            rf_df = pd.read_parquet(risk10k_p)
+            st.markdown(
+                f"**出典**: SEC EDGAR 10-K Item 1A  ·  **企業**: {rf_df['ticker'].nunique()}  ·  **テーマ**: {len(rf_df)}"
+            )
+            st.dataframe(rf_df, use_container_width=True, height=400)
+    fil10k_p = latest_parquet(DATA / "sec", "filings_10k")
+    if fil10k_p and fil10k_p.exists():
+        with st.expander("📜 SEC 10-K Filings リスト", expanded=False):
+            st.dataframe(pd.read_parquet(fil10k_p), use_container_width=True, height=300)
+
 elif axis == "axis7":
     st.subheader("💹 軸7 価格変動性")
     st.caption(
-        "World Bank Pink Sheet (無料月次商品価格、1960年〜)。タイヤ用 rubber TSR20/RSS3、原油 Brent/WTI/Dubai、天然ガス、ベース金属を含む15品目。"
+        "World Bank Pink Sheet 15品目月次 + **IMF Primary Commodity Prices (v3新規、RSS3/ウラン等)** + **LME 金属価格 (v3新規、Cu/Zn/Ni/Al/Li/W)**。"
     )
     source_inspector.render_source(
         "wb_prices", latest_parquet(DATA / "worldbank", "prices_monthly"),
         expanded=True,
     )
+
+    st.markdown("---")
+    st.markdown("### 🆕 v3新規: IMF Primary Commodity Prices")
+    st.markdown(
+        "**WB Pink Sheet と相補的**: ゴムRSS3、リン酸塩、ウラン、コットン等。"
+        "RSS3 (Singapore) は住友ゴムの主要 NR グレードのスポット価格指標。"
+    )
+    imf_p = latest_parquet(DATA / "imf", "commodity_prices")
+    if imf_p and imf_p.exists():
+        with st.expander("🌐 IMF 商品価格 月次", expanded=False):
+            import pandas as pd
+            imf_df = pd.read_parquet(imf_p)
+            st.markdown(
+                f"**出典**: [IMF Primary Commodity Prices]({imf_df['source_url'].iloc[0]})  "
+                f"  ·  **商品数**: {imf_df['commodity_code'].nunique()}"
+            )
+            st.markdown(
+                "**カラム定義**: commodity_code (IMFコード) / name / year / month / date / "
+                "value / unit / description / source"
+            )
+            st.dataframe(imf_df.sort_values(["commodity_code", "date"]), use_container_width=True, height=400)
+    imf_sum_p = latest_parquet(DATA / "imf", "commodity_summary")
+    if imf_sum_p and imf_sum_p.exists():
+        with st.expander("🌐 IMF 商品別 2024年ボラ", expanded=False):
+            st.dataframe(pd.read_parquet(imf_sum_p).sort_values("volatility_pct", ascending=False),
+                         use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("### 🆕 v3新規: LME 金属価格 (FRED経由 + Asian Metal curated)")
+    st.markdown(
+        "**金属系の価格ボラ**: Cu (スチールコード真鍮) / Zn (ZnO原料) / Al / Ni / "
+        "**Tungsten APT** / **Lithium Carbonate** (Li-S電池) 等の月次価格。"
+    )
+    lme_p = latest_parquet(DATA / "lme", "metal_prices")
+    if lme_p and lme_p.exists():
+        with st.expander("🏗 LME / FRED 金属価格 月次", expanded=False):
+            import pandas as pd
+            lme_df = pd.read_parquet(lme_p)
+            st.markdown(
+                f"**出典**: [FRED St. Louis Fed](https://fred.stlouisfed.org/) + Asian Metal/USGS curated  "
+                f"  ·  **シリーズ**: {lme_df['series_id'].nunique()}  ·  **観測**: {len(lme_df)}"
+            )
+            st.markdown(
+                "**カラム定義**: series_id / name / unit / date / value / source / source_url"
+            )
+            st.dataframe(lme_df.sort_values(["series_id", "date"]), use_container_width=True, height=400)
+    lme_sum_p = latest_parquet(DATA / "lme", "metal_prices_summary")
+    if lme_sum_p and lme_sum_p.exists():
+        with st.expander("🏗 金属別 ボラ年率化", expanded=False):
+            st.dataframe(pd.read_parquet(lme_sum_p), use_container_width=True)
 
 st.divider()
 

@@ -83,6 +83,68 @@ def _load_faostat_nr() -> pd.DataFrame:
     return pd.read_parquet(files[-1])
 
 
+@st.cache_data(show_spinner=False)
+def _load_prtr() -> pd.DataFrame:
+    base = Path(__file__).resolve().parents[2] / "data" / "prtr"
+    files = sorted(base.glob("prtr_by_cas_*.parquet"))
+    if not files:
+        return pd.DataFrame()
+    return pd.read_parquet(files[-1])
+
+
+@st.cache_data(show_spinner=False)
+def _load_emdat() -> pd.DataFrame:
+    base = Path(__file__).resolve().parents[2] / "data" / "emdat"
+    files = sorted(base.glob("disasters_2*.parquet"))
+    files = [f for f in files if "summary" not in f.stem]
+    if not files:
+        return pd.DataFrame()
+    return pd.read_parquet(files[-1])
+
+
+@st.cache_data(show_spinner=False)
+def _load_imf() -> pd.DataFrame:
+    base = Path(__file__).resolve().parents[2] / "data" / "imf"
+    files = sorted(base.glob("commodity_prices_*.parquet"))
+    if not files:
+        return pd.DataFrame()
+    return pd.read_parquet(files[-1])
+
+
+@st.cache_data(show_spinner=False)
+def _load_lme() -> pd.DataFrame:
+    base = Path(__file__).resolve().parents[2] / "data" / "lme"
+    files = sorted(base.glob("metal_prices_2*.parquet"))
+    files = [f for f in files if "summary" not in f.stem]
+    if not files:
+        return pd.DataFrame()
+    return pd.read_parquet(files[-1])
+
+
+@st.cache_data(show_spinner=False)
+def _load_reach_restriction() -> pd.DataFrame:
+    base = Path(__file__).resolve().parents[2] / "data" / "echa"
+    files = sorted(base.glob("reach_regulation_*.parquet"))
+    if not files:
+        return pd.DataFrame()
+    return pd.read_parquet(files[-1])
+
+
+# 産国 → ISO3 マッピング (EM-DAT クロス用)
+ELEMENT_TO_COUNTRIES = {
+    "W":           ["China", "Vietnam", "Russia"],
+    "Ti":          ["China", "Mozambique", "South Africa", "Australia"],
+    "Ti_sponge":   ["China", "Japan", "Russia"],
+    "Zn":          ["China", "Peru", "Australia"],
+    "Li":          ["Australia", "Chile", "China"],
+    "C_graphite":  ["China", "Madagascar"],
+    "Cu":          ["Chile", "Peru", "Congo (DRC)", "China"],
+    "S":           ["China", "USA", "Russia"],
+    "Si_metal":    ["China", "Russia"],
+}
+NR_COUNTRIES = ["Thailand", "Indonesia", "Vietnam", "Malaysia", "Côte d'Ivoire"]
+
+
 def _val(v):
     """Return None when v is None or NaN; else return v unchanged."""
     if v is None:
@@ -509,6 +571,32 @@ else:
                 cols[2].markdown(basis)
 
         # ---------------------------------------------------------------
+        # v3 新規: PRTR 実取扱量ベース 軸3 強化
+        # ---------------------------------------------------------------
+        prtr_df = _load_prtr()
+        if len(prtr_df) and m.get("cas"):
+            sub_prtr = prtr_df[prtr_df["cas"] == m["cas"]]
+            if len(sub_prtr):
+                st.markdown("### 🇯🇵 環境省 PRTR — 国内取扱事業所 (v3新規)")
+                st.caption(
+                    "軸3 国内集中度を **「有報スニペット言及社数(proxy)」** から "
+                    "**「PRTR 実取扱量(kt/年)+ 排出/移動量」** に格上げ。各事業所別の実態が出ます。"
+                )
+                sub_prtr_sorted = sub_prtr.sort_values("handled_kt", ascending=False)
+                pcols = st.columns(4)
+                pcols[0].metric("取扱事業所数", f"{len(sub_prtr)}")
+                pcols[1].metric("取扱量合計", f"{sub_prtr['handled_kt'].sum():.1f} kt/年")
+                pcols[2].metric("大気/水排出量計", f"{sub_prtr['release_kg'].sum():,.0f} kg/年")
+                pcols[3].metric("移動量計", f"{sub_prtr['transfer_kg'].sum():,.0f} kg/年")
+
+                display = sub_prtr_sorted[["company", "site", "handled_kt", "release_kg", "transfer_kg"]].copy()
+                display.columns = ["事業所", "所在地", "取扱量 (kt/年)", "排出量 (kg/年)", "移動量 (kg/年)"]
+                st.dataframe(display, use_container_width=True, hide_index=True)
+                st.caption(
+                    f"📋 出典: 環境省 PRTR 排出移動量データベース ({sub_prtr['year'].iloc[0]}年度、curated)"
+                )
+
+        # ---------------------------------------------------------------
         # 地政学・生産地集中 拡張データ (軸4 補強)
         # ---------------------------------------------------------------
         st.markdown("### 🌐 地政学・生産地集中 — 拡張データ")
@@ -663,6 +751,43 @@ else:
                     else:
                         st.info("FAOSTAT NR データ未取得")
                 i += 1
+
+        # ---------------------------------------------------------------
+        # v3 新規: EM-DAT 自然災害 × 産国 クロス
+        # ---------------------------------------------------------------
+        emdat_df = _load_emdat()
+        is_nr = (m.get("cas") in NR_CASES) or (m["id"] in NR_IDS)
+        usgs_element = CAS_TO_USGS_ELEMENT.get(m.get("cas")) or ID_TO_USGS_ELEMENT.get(m["id"])
+        target_countries = []
+        if is_nr:
+            target_countries = NR_COUNTRIES
+        elif usgs_element:
+            target_countries = ELEMENT_TO_COUNTRIES.get(usgs_element, [])
+
+        if target_countries and len(emdat_df):
+            sub_em = emdat_df[emdat_df["country"].isin(target_countries)].copy()
+            if len(sub_em):
+                st.markdown("### 🌪 EM-DAT 自然災害 × 主要産国 (v3新規)")
+                st.caption(
+                    "**地政学×自然災害 クロス軸**: 軸4 集中産国で過去30年に発生した災害履歴。"
+                    "「**平時の HHI 上は安定だが、災害時に詰む**」リスクを定量化。"
+                )
+                summary_cols = st.columns(4)
+                summary_cols[0].metric("対象産国", f"{len(target_countries)}カ国",
+                                       ", ".join(target_countries[:3]) + ("..." if len(target_countries) > 3 else ""))
+                summary_cols[1].metric("災害件数 (1990-2024)", f"{len(sub_em)}")
+                summary_cols[2].metric("総被害額", f"${sub_em['damage_usd_m'].sum():,.0f}M",
+                                       f"~${sub_em['damage_usd_m'].sum()/1000:.1f}B")
+                summary_cols[3].metric("被災者総数", f"{sub_em['affected_m'].sum():.1f}M人")
+
+                # 年×国 ヒートマップ表示用に集計
+                sub_em_sorted = sub_em.sort_values(["country", "year"], ascending=[True, False])
+                display = sub_em_sorted[["country", "year", "disaster_type", "event_name",
+                                          "damage_usd_m", "affected_m", "industry_impact"]].copy()
+                display.columns = ["国", "年", "災害種別", "イベント名",
+                                    "被害額 (USD M)", "被災者 (百万人)", "業界影響"]
+                st.dataframe(display, use_container_width=True, hide_index=True, height=300)
+                st.caption("📋 出典: EM-DAT / CRED + public news (curated)")
 
         # ---------------------------------------------------------------
         # サプライチェーン上流 — 系譜ツリー + レーダー重ね描き
