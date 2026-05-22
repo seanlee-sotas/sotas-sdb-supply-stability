@@ -368,9 +368,97 @@ else:
             st.plotly_chart(fig, use_container_width=True)
 
         st.markdown("### 軸別 懸念要因の詳細")
+        st.caption(
+            "右欄は **このスコアになった理由を初見でも読める日本語で** 説明します "
+            "(基礎データの体系を知らなくても判断材料になる粒度)。"
+            "  ※軸1は現状 per-chemical で意味のあるデータが集まっていないため除外しています。"
+        )
+
+        def _axis_basis_text(axis_key: str, score, value, note) -> str:
+            """各軸のスコア + 生データ value を平易な日本語に翻訳して返す。
+            スコア帯 (high/med/low) で語尾を変え、判断材料となる粒度の説明にする。"""
+            if score is None:
+                return "—"
+            band = "high" if score >= 70 else ("med" if score >= 40 else "low")
+            v = str(value) if value else ""
+
+            if axis_key == "axis2_supply_demand":
+                # value 例: "+0.67 (輸出超過)" / "-0.43 (輸入依存)"
+                # 純輸出比率 = (輸出 - 輸入) / (輸出 + 輸入)。+1 が完全輸出、-1 が完全輸入
+                if band == "high":
+                    return (f"国際貿易データ (HS6) で見ると 純輸出比率 {v}。国内生産が需要を概ねカバーできており、"
+                            "海外の需給ショックや為替変動を比較的吸収しやすい。")
+                if band == "med":
+                    return (f"純輸出比率 {v}。国内需給はやや偏っているが極端ではない。"
+                            "海外市況や為替次第で価格・調達難度が動く余地あり。")
+                return (f"純輸出比率 {v}。国内では生産能力か需要のどちらかに偏りがあり、"
+                        "海外市況・地政学ショックの影響を直接受けやすい構造。")
+
+            if axis_key == "axis3_jp_concentration":
+                # value 例: "16社 (低集中)" / "6社 (中集中)" / "2社 (高集中)"
+                # 国内上場化学442社のうち、この物質を有報・IR・特許で言及している企業数
+                if band == "high":
+                    return (f"国内で {v} の上場化学メーカーがこの物質を取扱・言及。"
+                            "供給先の選択肢が広く、1社が止まっても代替先を見つけやすい。")
+                if band == "med":
+                    return (f"国内取扱企業 {v}。取り扱う企業が限定的で、"
+                            "1社停止時の代替確保にリードタイムが必要になる可能性。")
+                return (f"国内取扱企業 {v}。ごく少数の企業に依存しており、"
+                        "1社の事故・撤退でも供給網が大きく揺れる可能性が高い。")
+
+            if axis_key == "axis4_global_hhi":
+                # value 例: "1,628 (中集中)" / "3,200 (高集中)"
+                # HHI: 世界輸出シェア二乗和。1500 未満=低集中、1500-2500=中、2500 以上=高
+                if band == "high":
+                    return (f"世界輸出シェアの集中度 (HHI) は {v}。原産国が複数に分散しているため、"
+                            "特定国の輸出規制・地政学リスクが発動しても代替輸入元が残る。")
+                if band == "med":
+                    return (f"世界輸出シェア HHI {v}。中程度の集中で、上位2-3カ国に偏り。"
+                            "それらの国で規制・地政学イベントがあれば調達価格・量に影響。")
+                return (f"世界輸出シェア HHI {v}。少数の国に世界供給が寡占しており、"
+                        "輸出規制・関税・港湾停止などのショック耐性が低い。")
+
+            if axis_key == "axis5_regulation":
+                # value 例: "規制該当なし" / "ECHA SVHC 1件"
+                # 参照3リスト: ECHA SVHC (EU 高懸念物質)、Stockholm POPs (POPs条約)、METI 特定重要物資
+                if band == "high":
+                    return ("EU の高懸念物質リスト (ECHA SVHC)、国連の POPs 条約、"
+                            "経産省の特定重要物資のいずれにも該当せず。"
+                            "現時点で製造・取扱を制限する公的規制は確認されていない。")
+                if band == "med":
+                    return (f"{v}。いずれかの規制リストに該当しており、"
+                            "用途次第で届出・代替検討の対象になる可能性。")
+                return (f"{v}。複数の規制に該当しており、"
+                        "中長期的に使用制限・代替品移行を迫られるリスクが高い。")
+
+            if axis_key == "axis6_events":
+                # value 例: "HIGH 2 / MED 6"
+                # 過去365日の SEC 8-K / EDINET 臨時 / DART / TDnet / TWSE 重大訊息 / NITE 事故
+                # から抽出した、関連メーカーの火災・操業停止・FM・リコール等のイベント数
+                if band == "high":
+                    return (f"直近365日のメーカー公開情報 (SEC 8-K / EDINET 臨報 / DART / TDnet / TWSE / NITE) を見て、"
+                            f"供給途絶イベント {v}。火災・操業停止・FM 等の発生が乏しく、サプライチェーンは安定。")
+                if band == "med":
+                    return (f"直近365日の供給途絶イベント {v}。"
+                            "中程度の頻度で火災・停止・リコール等が発生しており、リスク上昇傾向。")
+                return (f"直近365日の供給途絶イベント {v}。"
+                        "重大事案が複数発生しており、現に供給網が不安定。要警戒。")
+
+            if axis_key == "axis7_price":
+                # value 例: "32.7%" — 原料価格 (World Bank 商品インデックス) の年間ボラ
+                if band == "high":
+                    return (f"原料価格 (World Bank 商品インデックス) の年間ボラティリティは {v}。"
+                            "比較的安定しており、コスト見通しが立てやすい。")
+                if band == "med":
+                    return (f"原料価格の年間ボラティリティ {v}。中程度の変動で、"
+                            "コスト計画には一定の幅を織り込む必要。")
+                return (f"原料価格の年間ボラティリティ {v}。大きく振れやすく、"
+                        "頻繁な見積り見直しや長期契約による安定化策の検討が必要。")
+
+            # フォールバック
+            return f"{v} {note or ''}".strip() or "—"
 
         for axis_key, axis_label in [
-            ("axis1_capacity", "🏭 軸1 生産能力・新増設"),
             ("axis2_supply_demand", "⚖️ 軸2 需給バランス"),
             ("axis3_jp_concentration", "🤝 軸3 国内供給集中度"),
             ("axis4_global_hhi", "🌐 軸4 地政学・原産地集中"),
@@ -381,7 +469,7 @@ else:
             s = sub.get(axis_key, {})
             score = s.get("score")
             with st.container(border=True):
-                cols = st.columns([2, 1, 3])
+                cols = st.columns([2, 1, 4])
                 cols[0].markdown(f"**{axis_label}**")
                 if score is None:
                     cols[1].markdown("⚪ 評価不可")
@@ -394,8 +482,8 @@ else:
                         emoji = "🔴"
                     cols[1].markdown(f"{emoji} スコア **{int(score)}** / 100")
 
-                detail = s.get("detail") or s.get("rationale") or s.get("reason") or "—"
-                cols[2].caption(str(detail)[:300])
+                basis = _axis_basis_text(axis_key, score, s.get("value"), s.get("note"))
+                cols[2].markdown(basis)
 
         # ---------------------------------------------------------------
         # 地政学・生産地集中 拡張データ (軸4 補強)
