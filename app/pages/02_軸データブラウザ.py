@@ -49,7 +49,7 @@ axis = st.radio(
     "軸を選択",
     options=["axis1", "axis2", "axis3", "axis4", "axis5", "axis6", "axis7"],
     format_func=lambda x: {
-        "axis1": "🏭 軸1 生産能力・新増設",
+        "axis1": "⏱ 軸1 短期要因 (直近90日)",
         "axis2": "⚖️ 軸2 需給バランス",
         "axis3": "🤝 軸3 国内供給集中度",
         "axis4": "🌐 軸4 地政学・原産地集中",
@@ -67,17 +67,47 @@ st.divider()
 # -----------------------------------------------------------------------------
 
 if axis == "axis1":
-    st.subheader("🏭 軸1 生産能力・新増設")
+    st.subheader("⏱ 軸1 短期要因 (直近90日)")
     st.caption(
-        "EDINET 有価証券報告書から「生産能力」「年産」「設備能力」キーワード周辺をスニペット抽出 → LLM で構造化（製品×拠点×年間能力）。"
+        "構造評価軸 (2〜7) を時系列で補正する役割。"
+        " マクロ60% (JPCAエチレン稼働率 + 原油Brent 3M変化 + 業界ニュース密度) + "
+        " 個別40% (関連メーカー90日イベント + 物質名マッチ記事 + WB商品3M変化) を合成。"
+        "  score = 100 - 50 × pressure"
+    )
+    st.markdown("##### マクロ系シグナル")
+    source_inspector.render_source(
+        "jpca_utilization", latest_parquet(DATA / "jpca", "jpca_utilization"),
+        key_suffix="axis1", expanded=True,
     )
     source_inspector.render_source(
-        "edinet_snippets", latest_parquet(DATA / "edinet", "capacity_snippets")
+        "wb_prices", latest_parquet(DATA / "worldbank", "prices_monthly"),
+        key_suffix="axis1",
+    )
+    st.markdown("##### 個別系シグナル (物質名マッチ + メーカーイベント)")
+    source_inspector.render_source(
+        "chem_news", latest_parquet(DATA / "chem_news", "chem_news"),
+        key_suffix="axis1",
     )
     source_inspector.render_source(
-        "edinet_structured", latest_parquet(DATA / "edinet", "capacity_structured"),
-        expanded=True,
+        "chem_daily", latest_parquet(DATA / "chem_daily", "chem_daily"),
+        key_suffix="axis1",
     )
+    st.markdown(
+        "※ 関連メーカー90日イベントは [💥 軸6 過去の供給途絶] タブの LLM分類済データを直近90日に絞って再利用。"
+    )
+    with st.expander("📂 旧軸1 (EDINET設備キーワード抽出) — 参考データ", expanded=False):
+        st.caption(
+            "旧仕様の生産能力スニペット。Phase B (JA alias生成 + product紐付け) を経て"
+            "個別物質に紐付ける構想は保留中。当面は参考データ。"
+        )
+        source_inspector.render_source(
+            "edinet_snippets", latest_parquet(DATA / "edinet", "capacity_snippets"),
+            key_suffix="axis1-legacy",
+        )
+        source_inspector.render_source(
+            "edinet_structured", latest_parquet(DATA / "edinet", "capacity_structured"),
+            key_suffix="axis1-legacy",
+        )
 
 elif axis == "axis2":
     st.subheader("⚖️ 軸2 需給バランス")
