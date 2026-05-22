@@ -571,6 +571,209 @@ else:
                 cols[2].markdown(basis)
 
         # ---------------------------------------------------------------
+        # v3 新規: ECHA REACH Restriction (軸5 強化) — CAS hit
+        # ---------------------------------------------------------------
+        reach_df = _load_reach_restriction()
+        if len(reach_df) and m.get("cas"):
+            reach_hit = reach_df[reach_df["cas"] == m["cas"]]
+            if len(reach_hit):
+                st.markdown("### 🇪🇺 ECHA REACH Annex XVII/XIV — 規制段階 (v3新規)")
+                st.caption(
+                    "軸5 を「SVHC候補(警戒段階)」から「**実際に使用制限/認可が決まった物質**」へ格上げ。"
+                )
+                for _, r in reach_hit.iterrows():
+                    color = {"Restriction": "#DC2626", "Authorization": "#EA580C",
+                             "Watch": "#CA8A04", "Proposal": "#9333EA",
+                             "SVHC + Restriction": "#DC2626"}.get(r["list_type"], "#6B7280")
+                    st.markdown(
+                        f"<div style='border-left:5px solid {color};padding-left:0.8em;margin:0.5em 0;'>"
+                        f"<span style='background:{color};color:white;padding:0.1em 0.5em;border-radius:0.3em;font-size:0.8em;'>"
+                        f"{r['list_type']}</span> <strong>{r['name']}</strong><br>"
+                        f"<small>📋 {r['annex']} · 登録日: {r['entry_date'] or '—'}</small><br>"
+                        f"<small>{r['restriction_summary']}</small><br>"
+                        f"<em>住友ゴム関連性: {r['sumitomo_relevance']}</em>"
+                        f"</div>", unsafe_allow_html=True,
+                    )
+
+        # ---------------------------------------------------------------
+        # v3 新規: SEC 10-K Risk Factor (軸6 強化) — 関連 ticker hit
+        # ---------------------------------------------------------------
+        try:
+            from chemicals_loader import _sumitomo_overrides_by_cas
+            overrides = _sumitomo_overrides_by_cas()
+            sec_tickers = (overrides.get(m.get("cas") or "") or {}).get("sec_tickers", [])
+        except Exception:
+            sec_tickers = []
+
+        if sec_tickers:
+            risk10k_base = Path(__file__).resolve().parents[2] / "data" / "sec"
+            r10k_files = sorted(risk10k_base.glob("risk_factors_10k_*.parquet"))
+            if r10k_files:
+                rf_df = pd.read_parquet(r10k_files[-1])
+                hit = rf_df[rf_df["ticker"].isin(sec_tickers)]
+                if len(hit):
+                    st.markdown("### 📜 SEC 10-K Risk Factor — 関連米化学メジャーの構造リスク (v3新規)")
+                    st.caption(
+                        f"この物質に紐付く米化学メジャー {sec_tickers} の 10-K 年次報告書 Item 1A から、"
+                        "構造的に開示されているサプライ/地政学/規制リスクを表示。"
+                    )
+                    display = hit[["ticker", "theme", "summary"]].copy()
+                    display.columns = ["企業", "リスクテーマ", "要約"]
+                    st.dataframe(display, use_container_width=True, hide_index=True)
+
+        # ---------------------------------------------------------------
+        # v3 新規: IMF / LME 価格 (軸7 強化)
+        # ---------------------------------------------------------------
+        try:
+            from chemicals_loader import _sumitomo_overrides_by_cas
+            wb_commodity = (overrides.get(m.get("cas") or "") or {}).get("wb_commodity")
+        except Exception:
+            wb_commodity = None
+
+        # IMF コードへの簡易マッピング
+        WB_TO_IMF = {
+            "CRUDE_BRENT": "POILBRE", "CRUDE_DUBAI": "POILDUB", "CRUDE_WTI": "POILWTI",
+            "NGAS_EUR": "PNGASEU", "NGAS_JP": "PNGASJP", "NGAS_US": "PNGASUS",
+            "RUBBER_TSR20": "PRUBB", "RUBBER1_MYSG": "PNRUB",
+            "Zinc": "PZINC", "COPPER": "PCOPP", "ALUMINUM": "PALUM", "NICKEL": "PNICK",
+            "COTTON_A_INDX": "PCOTTIND",
+        }
+        # LME シリーズへのマッピング
+        WB_TO_LME = {
+            "COPPER": "PCOPPUSDM", "Zinc": "PZINCUSDM", "NICKEL": "PNICKUSDM",
+            "ALUMINUM": "PALUMUSDM",
+        }
+        # USGS element → 特殊 LME シリーズ
+        ELEM_TO_LME = {
+            "W": "TUNGSTEN_APT",
+            "Li": "LI_CARB",
+            "Cu": "PCOPPUSDM", "Zn": "PZINCUSDM", "Ni": "PNICKUSDM",
+        }
+
+        imf_df = _load_imf()
+        lme_df = _load_lme()
+        usgs_element_v = CAS_TO_USGS_ELEMENT.get(m.get("cas")) or ID_TO_USGS_ELEMENT.get(m["id"])
+
+        imf_code = WB_TO_IMF.get(wb_commodity) if wb_commodity else None
+        lme_sids = []
+        if wb_commodity and wb_commodity in WB_TO_LME:
+            lme_sids.append(WB_TO_LME[wb_commodity])
+        if usgs_element_v and usgs_element_v in ELEM_TO_LME:
+            lme_sids.append(ELEM_TO_LME[usgs_element_v])
+
+        has_imf = imf_code and len(imf_df) and (imf_df["commodity_code"] == imf_code).any()
+        has_lme = lme_sids and len(lme_df) and lme_df["series_id"].isin(lme_sids).any()
+
+        if has_imf or has_lme:
+            st.markdown("### 💹 IMF / LME 価格 — 関連商品の月次推移 (v3新規)")
+            st.caption(
+                "WB Pink Sheet (軸7) と相補的な追加価格ソース。IMF=RSS3/ウラン/コットン等、LME=金属系。"
+            )
+            if has_imf:
+                sub_imf = imf_df[imf_df["commodity_code"] == imf_code].sort_values("date")
+                st.markdown(f"**🌐 IMF Primary Commodity Prices — {sub_imf['name'].iloc[0]}**")
+                fig_imf = go.Figure()
+                fig_imf.add_trace(go.Scatter(
+                    x=sub_imf["date"], y=sub_imf["value"],
+                    mode="lines+markers", line=dict(color="#0F766E", width=2),
+                ))
+                fig_imf.update_layout(
+                    height=260, template="simple_white",
+                    margin=dict(l=40, r=20, t=20, b=30),
+                    yaxis_title=f"価格 ({sub_imf['unit'].iloc[0]})",
+                )
+                st.plotly_chart(fig_imf, use_container_width=True)
+            if has_lme:
+                for sid in lme_sids:
+                    sub_lme = lme_df[lme_df["series_id"] == sid].sort_values("date")
+                    if not len(sub_lme):
+                        continue
+                    st.markdown(f"**🏗 LME/FRED — {sub_lme['name'].iloc[0]} ({sid})**")
+                    fig_lme = go.Figure()
+                    fig_lme.add_trace(go.Scatter(
+                        x=sub_lme["date"], y=sub_lme["value"],
+                        mode="lines+markers", line=dict(color="#EA580C", width=2),
+                    ))
+                    fig_lme.update_layout(
+                        height=260, template="simple_white",
+                        margin=dict(l=40, r=20, t=20, b=30),
+                        yaxis_title=f"価格 ({sub_lme['unit'].iloc[0]})",
+                    )
+                    st.plotly_chart(fig_lme, use_container_width=True)
+
+        # ---------------------------------------------------------------
+        # v3 新規: USDA PSD 農産物 (軸4 強化、バイオ原料系物質)
+        # ---------------------------------------------------------------
+        usda_relevant_commodities = []
+        # CAS / id → USDA 作物名 マッピング
+        if m["id"] in ("bio_polyol_corn",):
+            usda_relevant_commodities.append("Corn")
+        if m["id"] in ("tennis_ball_felt",):
+            usda_relevant_commodities.append("Cotton")
+        if m["id"] in ("rice_husk_silica",):
+            usda_relevant_commodities.append("Rice")
+
+        if usda_relevant_commodities:
+            usda_base = Path(__file__).resolve().parents[2] / "data" / "usda"
+            usda_files = sorted(usda_base.glob("psd_crops_*.parquet"))
+            if usda_files:
+                u_df = pd.read_parquet(usda_files[-1])
+                for commodity in usda_relevant_commodities:
+                    sub_u = u_df[u_df["commodity"] == commodity]
+                    if not len(sub_u):
+                        continue
+                    st.markdown(f"### 🌾 USDA FAS PSD — {commodity} 国別生産 (v3新規)")
+                    st.caption(
+                        "この物質のバイオ原料側の国別生産集中度。地政学リスクの起点になります。"
+                    )
+                    sub_u_sorted = sub_u.sort_values("share_pct", ascending=False)
+                    fig_u = px.bar(
+                        sub_u_sorted, x="country", y="share_pct", text="share_pct",
+                        color="share_pct", color_continuous_scale="Greens",
+                    )
+                    fig_u.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+                    fig_u.update_layout(
+                        height=320, template="simple_white",
+                        showlegend=False, coloraxis_showscale=False,
+                        yaxis_title="世界生産シェア (%)", xaxis_title="",
+                    )
+                    st.plotly_chart(fig_u, use_container_width=True)
+
+        # ---------------------------------------------------------------
+        # v3 新規: METI 化学工業生産動態 (軸2 強化、CAS hit 物質のみ)
+        # ---------------------------------------------------------------
+        meti_base = Path(__file__).resolve().parents[2] / "data" / "meti_prod"
+        meti_files = sorted(meti_base.glob("chemical_production_2*.parquet"))
+        meti_files = [f for f in meti_files if "summary" not in f.stem]
+        if meti_files and m.get("cas"):
+            mp_df = pd.read_parquet(meti_files[-1])
+            sub_mp = mp_df[mp_df["sumitomo_cas"] == m["cas"]]
+            if len(sub_mp):
+                product_name = sub_mp["product"].iloc[0]
+                st.markdown(f"### 🏭 METI 化学工業生産動態 — {product_name} 国内月次生産 (v3新規)")
+                st.caption(
+                    "国内の月次生産量。軸2 需給バランス・軸1 短期要因の補強データ。"
+                )
+                sub_mp_sorted = sub_mp.sort_values("date")
+                fig_mp = px.bar(
+                    sub_mp_sorted, x="date", y="production_kt", text="production_kt",
+                    color_discrete_sequence=["#0F766E"],
+                )
+                fig_mp.update_traces(texttemplate="%{text:.1f}", textposition="outside")
+                fig_mp.update_layout(
+                    height=260, template="simple_white", showlegend=False,
+                    margin=dict(l=40, r=20, t=20, b=30),
+                    yaxis_title="月次生産 (kt)", xaxis_title="",
+                )
+                st.plotly_chart(fig_mp, use_container_width=True)
+                annual = sub_mp["annual_kt"].iloc[0]
+                seasonality = (sub_mp["production_kt"].max() - sub_mp["production_kt"].min()) / sub_mp["production_kt"].mean() * 100
+                cmt = st.columns(3)
+                cmt[0].metric("年間生産", f"{annual:.1f} kt")
+                cmt[1].metric("月次最大-最小", f"{sub_mp['production_kt'].max():.1f} - {sub_mp['production_kt'].min():.1f} kt")
+                cmt[2].metric("季節性", f"{seasonality:.1f}%")
+
+        # ---------------------------------------------------------------
         # v3 新規: PRTR 実取扱量ベース 軸3 強化
         # ---------------------------------------------------------------
         prtr_df = _load_prtr()
