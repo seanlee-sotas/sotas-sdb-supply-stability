@@ -28,6 +28,11 @@ SEC_DIR = ROOT / "data" / "sec"
 EDINET_DIR = ROOT / "data" / "edinet"
 WB_DIR = ROOT / "data" / "worldbank"
 SUPPLIER_DIR = ROOT / "data" / "supplier"
+JPCA_DIR = ROOT / "data" / "jpca"
+CHEM_NEWS_DIR = ROOT / "data" / "chem_news"
+CHEM_DAILY_DIR = ROOT / "data" / "chem_daily"
+AXIS6_CLS_DIR = ROOT / "data" / "axis6_classified"
+CHEMICALS_DIR = ROOT / "data" / "chemicals"
 
 AXIS_KEYS = [
     "axis1_capacity",
@@ -78,15 +83,273 @@ def _grade(score: float | None) -> str:
 # Per-axis scorers
 # ---------------------------------------------------------------------------
 
+from datetime import datetime, timedelta, timezone
+
+AXIS1_WINDOW_DAYS = 90  # 短期要因の観測窓
+AXIS1_MACRO_WEIGHT = 0.6
+AXIS1_INDIV_WEIGHT = 0.4
+
+# 直近90日のニュース基準件数 (個別マッチ): >=5件で完全 pressure 1.0
+AXIS1_NEWS_HIGH_THRESHOLD = 5
+# 直近90日の関連イベント基準スコア (HIGH=2, MED=1): >=4 で 1.0
+AXIS1_EVENT_HIGH_THRESHOLD = 4
+# 業界全体のニュース密度 (件/日): >=15件/日で 1.0
+AXIS1_NEWS_DENSITY_HIGH = 15
+# 原料価格 3ヶ月変化率の絶対値: >=15%で 1.0
+AXIS1_PRICE_3M_SWING_HIGH = 0.15
+
+
+@lru_cache(maxsize=1)
+def _load_jpca_util() -> pd.DataFrame:
+    p = _latest(JPCA_DIR, "jpca_utilization")
+    if p is None:
+        return pd.DataFrame()
+    return pd.read_parquet(p)
+
+
+@lru_cache(maxsize=1)
+def _load_wb_prices() -> pd.DataFrame:
+    p = _latest(WB_DIR, "prices_monthly")
+    if p is None:
+        return pd.DataFrame()
+    df = pd.read_parquet(p)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+@lru_cache(maxsize=1)
+def _load_chem_news_concat() -> pd.DataFrame:
+    """chem_news + chem_daily を縦結合した df。columns: title, pub_date_iso, source"""
+    frames = []
+    p1 = _latest(CHEM_NEWS_DIR, "chem_news")
+    if p1 is not None:
+        df = pd.read_parquet(p1)[["title", "pub_date_iso"]].copy()
+        df["source"] = "google_news"
+        frames.append(df)
+    p2 = _latest(CHEM_DAILY_DIR, "chem_daily")
+    if p2 is not None:
+        df = pd.read_parquet(p2)[["title", "pub_date_iso"]].copy()
+        df["source"] = "chem_daily"
+        frames.append(df)
+    if not frames:
+        return pd.DataFrame(columns=["title", "pub_date_iso", "source"])
+    return pd.concat(frames, ignore_index=True)
+
+
+@lru_cache(maxsize=1)
+def _load_axis6_classified_all() -> pd.DataFrame:
+    """axis6_classified + SEC item801_classified を共通スキーマに正規化。
+    columns: source, _date, event_type, supply_relevance, key_facility, key_product,
+             company_label, ticker"""
+    frames = []
+    # JP/KR/TW
+    if AXIS6_CLS_DIR.exists():
+        for f in sorted(AXIS6_CLS_DIR.glob("*_classified_*.parquet")):
+            source_name = f.stem.rsplit("_classified_", 1)[0]
+            df = pd.read_parquet(f)
+            # group dedupe by source_id keep latest
+            df = df.sort_values("_classified_at").drop_duplicates("source_id", keep="last")
+            df["source"] = source_name
+            # _date: axis6 LLM 分類結果には日付が直接無いので、別 source raw parquet から
+            # join する必要があるが、簡易化のため _classified_at を fallback として使用
+            df["_date"] = df["_classified_at"].astype(str).str[:10]
+            df["company_label"] = ""
+            df["ticker"] = ""
+            frames.append(df[["source", "_date", "event_type", "supply_relevance",
+                              "key_facility", "key_product", "company_label", "ticker"]])
+    # SEC
+    sec_p = _latest(SEC_DIR, "item801_classified")
+    if sec_p is not None:
+        df = pd.read_parquet(sec_p)
+        sec_norm = pd.DataFrame({
+            "source": "sec_8k_item801",
+            "_date": df["filing_date"].astype(str).str[:10],
+            "event_type": df["event_type"],
+            "supply_relevance": df["supply_relevance"],
+            "key_facility": df.get("key_facility", ""),
+            "key_product": df.get("key_product", ""),
+            "company_label": df.get("company_name", ""),
+            "ticker": df.get("ticker", ""),
+        })
+        frames.append(sec_norm)
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
+@lru_cache(maxsize=1)
+def _load_company_map() -> dict:
+    """CAS → {us:[ticker], jp:[name], kr:[name], tw:[ticker]}"""
+    p = CHEMICALS_DIR / "chemicals_company_map.parquet"
+    if not p.exists():
+        return {}
+    df = pd.read_parquet(p)
+    out: dict[str, dict] = {}
+    for _, r in df.iterrows():
+        cas = str(r.get("cas", "")).strip()
+        if not cas:
+            continue
+        out[cas] = {
+            "us": list(r.get("us") or []),
+            "jp": list(r.get("jp") or []),
+            "kr": list(r.get("kr") or []),
+            "tw": list(r.get("tw") or []),
+        }
+    return out
+
+
+def _name_terms(chem: dict) -> list[str]:
+    """物質名マッチ用キーワード (重複排除、3文字以上のみ)。"""
+    seen: set[str] = set()
+    terms: list[str] = []
+    for k in ("name_ja", "name_en"):
+        v = chem.get(k)
+        if v:
+            v = str(v).strip()
+            if len(v) >= 3 and v not in seen:
+                seen.add(v); terms.append(v)
+    for k in ("synonyms_ja", "synonyms_en"):
+        raw = chem.get(k) or ""
+        if isinstance(raw, str):
+            for s in raw.split(","):
+                s = s.strip()
+                if len(s) >= 3 and s not in seen:
+                    seen.add(s); terms.append(s)
+    return terms
+
+
+def _3m_price_swing(commodity: str) -> float | None:
+    """月次価格の直近3ヶ月変化率 (絶対値)。"""
+    wb = _load_wb_prices()
+    if wb.empty:
+        return None
+    sub = wb[wb["commodity"] == commodity].sort_values("date")
+    if len(sub) < 4:
+        return None
+    cur = sub.iloc[-1]["price"]
+    prev = sub.iloc[-4]["price"]
+    if prev <= 0:
+        return None
+    return abs(cur / prev - 1.0)
+
+
 def score_axis1(chem: dict) -> dict:
-    """軸1は現状 chemical-agnostic な keyword 抽出に依存しており、個別物質の評価には使えない。
-    JA alias 拡充 + capacity_structured.product 紐付け (Phase B) まで全件 None 返却。
-    複合スコアからは MIN_SCORED_AXES ロジックで自動除外される。"""
-    return {
-        "score": None,
-        "value": "—",
-        "note": "個別物質スコアは Phase B (JA alias生成 + product紐付け) まで保留。企業活動proxyとしては「軸1」タブで閲覧可能。",
-    }
+    """軸1 短期要因スコア (直近90日のショック圧力).
+
+    マクロ60% + 個別40% の合成。スコア = 100 - 50 × 合成 pressure (0-1).
+    平時 ~80-100、業界ショック発生 50-70、物質固有重大事案 20-40。
+    """
+    cas = chem.get("cas")
+    cutoff_dt = datetime.now(timezone.utc) - timedelta(days=AXIS1_WINDOW_DAYS)
+    cutoff_iso = cutoff_dt.isoformat()
+    cutoff_date = cutoff_dt.date().isoformat()
+
+    # === マクロシグナル (業界全体) ===
+    macro_signals: list[float] = []
+    macro_notes: list[str] = []
+
+    # (a) JPCA エチレン稼働率: 直近3M平均 vs 過去10年平均の下振れ (pp)
+    util = _load_jpca_util()
+    if not util.empty:
+        u = util.sort_values("period").copy()
+        recent3 = u.tail(3)["util_current"].dropna()
+        # 過去10年 (= 120ヶ月) の平均を base に。短ければあるだけ
+        base = u.tail(120).head(117)["util_current"].dropna()
+        if len(recent3) >= 1 and len(base) >= 12:
+            dip_pp = max(0.0, base.mean() - recent3.mean())
+            macro_signals.append(min(1.0, dip_pp / 10.0))
+            if dip_pp >= 2:
+                macro_notes.append(f"JPCAエチレン稼働率 直近3M {recent3.mean():.1f}% (10年平均 -{dip_pp:.1f}pp)")
+
+    # (b) WB CRUDE_BRENT 3M change (原料価格マクロ proxy)
+    swing = _3m_price_swing("CRUDE_BRENT")
+    if swing is not None:
+        macro_signals.append(min(1.0, swing / AXIS1_PRICE_3M_SWING_HIGH))
+        if swing >= 0.07:
+            macro_notes.append(f"原油Brent 3ヶ月変化 {swing*100:+.1f}%")
+
+    # (c) chem_news + chem_daily 直近90日の業界全体件数
+    news_all = _load_chem_news_concat()
+    if not news_all.empty:
+        recent = news_all[news_all["pub_date_iso"].astype(str) >= cutoff_iso]
+        density = len(recent) / max(1, AXIS1_WINDOW_DAYS)
+        macro_signals.append(min(1.0, density / AXIS1_NEWS_DENSITY_HIGH))
+        macro_notes.append(f"業界ニュース密度 {density:.1f}件/日 (90日合計{len(recent)}件)")
+
+    macro_pressure = sum(macro_signals) / len(macro_signals) if macro_signals else 0.0
+
+    # === 個別シグナル (物質固有) ===
+    indiv_signals: list[float] = []
+    indiv_notes: list[str] = []
+
+    # (d) 軸6 直近90日の関連メーカーイベント
+    cmap = _load_company_map().get(cas or "", {})
+    tickers = set([t for t in cmap.get("us", []) + cmap.get("tw", []) if t])
+    names_jp = set([n for n in cmap.get("jp", []) if n])
+    names_kr = set([n for n in cmap.get("kr", []) if n])
+
+    axis6 = _load_axis6_classified_all()
+    related_event_score = 0
+    related_event_count = 0
+    if not axis6.empty:
+        recent_ax6 = axis6[axis6["_date"] >= cutoff_date]
+        if len(recent_ax6) and (tickers or names_jp or names_kr):
+            mask = (
+                recent_ax6["ticker"].astype(str).isin(tickers)
+                | recent_ax6["company_label"].apply(
+                    lambda s: any(n in str(s) for n in (names_jp | names_kr))
+                )
+            )
+            related = recent_ax6[mask]
+            for _, r in related.iterrows():
+                rel = str(r.get("supply_relevance", "")).upper()
+                if rel == "HIGH":
+                    related_event_score += 2
+                elif rel == "MED":
+                    related_event_score += 1
+            related_event_count = len(related)
+    indiv_signals.append(min(1.0, related_event_score / AXIS1_EVENT_HIGH_THRESHOLD))
+    if related_event_score >= 1:
+        indiv_notes.append(f"関連メーカー直近90日 イベント{related_event_count}件 (重み付スコア{related_event_score})")
+
+    # (e) chem_news + chem_daily 物質名マッチ件数
+    name_terms = _name_terms(chem)
+    name_hits = 0
+    if name_terms and not news_all.empty:
+        recent_news = news_all[news_all["pub_date_iso"].astype(str) >= cutoff_iso]
+        if len(recent_news):
+            titles = recent_news["title"].fillna("").astype(str)
+            match_mask = titles.apply(lambda t: any(term in t for term in name_terms))
+            name_hits = int(match_mask.sum())
+    indiv_signals.append(min(1.0, name_hits / AXIS1_NEWS_HIGH_THRESHOLD))
+    if name_hits >= 1:
+        indiv_notes.append(f"物質名マッチ ニュース{name_hits}件 (直近90日)")
+
+    # (f) 物質固有 WB 商品 (chem.wb_commodity field) があれば 3M swing
+    wb_commodity = (chem.get("wb_commodity") or "").strip()
+    if wb_commodity:
+        s = _3m_price_swing(wb_commodity)
+        if s is not None:
+            indiv_signals.append(min(1.0, s / AXIS1_PRICE_3M_SWING_HIGH))
+            if s >= 0.07:
+                indiv_notes.append(f"{wb_commodity} 価格 3ヶ月変化 {s*100:+.1f}%")
+
+    indiv_pressure = sum(indiv_signals) / len(indiv_signals) if indiv_signals else 0.0
+
+    # === 合成 ===
+    if not macro_signals and not indiv_signals:
+        return {"score": None, "value": "—", "note": "短期要因データ未取得"}
+    total_pressure = AXIS1_MACRO_WEIGHT * macro_pressure + AXIS1_INDIV_WEIGHT * indiv_pressure
+    score = round(100.0 - 50.0 * total_pressure, 1)
+
+    # value: HIGH/MED/LOW なラベル + signal 件数
+    band = "平穏" if score >= 80 else ("注意" if score >= 60 else ("警戒" if score >= 40 else "重大"))
+    value = (
+        f"{band} (マクロ圧力{macro_pressure:.2f} / 個別圧力{indiv_pressure:.2f})"
+    )
+    note = " / ".join(macro_notes + indiv_notes) if (macro_notes or indiv_notes) else "直近90日 顕著なシグナルなし"
+
+    return {"score": score, "value": value, "note": note}
 
 
 def score_axis2(chem: dict) -> dict:

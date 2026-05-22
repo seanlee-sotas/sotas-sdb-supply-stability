@@ -320,7 +320,7 @@ else:
 
         with col_radar:
             axis_labels = {
-                "axis1_capacity": "🏭 軸1\n生産能力",
+                "axis1_capacity": "⏱ 軸1\n短期要因",
                 "axis2_supply_demand": "⚖️ 軸2\n需給",
                 "axis3_jp_concentration": "🤝 軸3\n国内集中",
                 "axis4_global_hhi": "🌐 軸4\n地政学",
@@ -371,7 +371,7 @@ else:
         st.caption(
             "右欄は **このスコアになった理由を初見でも読める日本語で** 説明します "
             "(基礎データの体系を知らなくても判断材料になる粒度)。"
-            "  ※軸1は現状 per-chemical で意味のあるデータが集まっていないため除外しています。"
+            "  ※軸2〜7は構造評価 (年単位)、軸1は短期要因 (直近90日)。"
         )
 
         def _axis_basis_text(axis_key: str, score, value, note) -> str:
@@ -381,6 +381,28 @@ else:
                 return "—"
             band = "high" if score >= 70 else ("med" if score >= 40 else "low")
             v = str(value) if value else ""
+
+            if axis_key == "axis1_capacity":
+                # value 例: "注意 (マクロ圧力0.74 / 個別圧力0.33)"
+                # note 例: "JPCAエチレン稼働率 直近3M 70.5% (-19pp) / Brent 3M +80% / ニュース密度..."
+                triggers = (note or "").strip() or "顕著なシグナルなし"
+                if band == "high":
+                    return (
+                        f"直近90日 (短期要因) は **{v}**。"
+                        f" 観測したシグナル: {triggers}。"
+                        " 構造評価 (軸2〜7) の通り平時運用と判断できる。"
+                    )
+                if band == "med":
+                    return (
+                        f"直近90日 (短期要因) は **{v}**。"
+                        f" 観測したシグナル: {triggers}。"
+                        " 構造評価が示すよりも実態は揺れている可能性、調達計画は短期更新推奨。"
+                    )
+                return (
+                    f"直近90日 (短期要因) は **{v}**。"
+                    f" 観測したシグナル: {triggers}。"
+                    " 短期的に供給逼迫・価格急変が顕在化しており、構造評価の安定度より実態リスクは明らかに高い。"
+                )
 
             if axis_key == "axis2_supply_demand":
                 # value 例: "+0.67 (輸出超過)" / "-0.43 (輸入依存)"
@@ -459,6 +481,7 @@ else:
             return f"{v} {note or ''}".strip() or "—"
 
         for axis_key, axis_label in [
+            ("axis1_capacity", "⏱ 軸1 短期要因 (直近90日)"),
             ("axis2_supply_demand", "⚖️ 軸2 需給バランス"),
             ("axis3_jp_concentration", "🤝 軸3 国内供給集中度"),
             ("axis4_global_hhi", "🌐 軸4 地政学・原産地集中"),
@@ -686,7 +709,7 @@ else:
                 st.markdown("**自物質 + 上流物質の7軸スコアを重ね描き** (上流リスクが下流に伝播するかを視覚化)")
 
                 axis_labels = {
-                    "axis1_capacity": "🏭軸1",
+                    "axis1_capacity": "⏱軸1",
                     "axis2_supply_demand": "⚖️軸2",
                     "axis3_jp_concentration": "🤝軸3",
                     "axis4_global_hhi": "🌐軸4",
@@ -858,7 +881,7 @@ else:
                 strat_df_cached = _load_strategic_flags()
 
                 tab3_axis_labels = {
-                    "axis1_capacity": "🏭軸1",
+                    "axis1_capacity": "⏱軸1",
                     "axis2_supply_demand": "⚖️軸2",
                     "axis3_jp_concentration": "🤝軸3",
                     "axis4_global_hhi": "🌐軸4",
