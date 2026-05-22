@@ -621,6 +621,9 @@ else:
 
                 colors = ["#0F766E", "#EA580C", "#7C3AED", "#0EA5E9", "#DC2626"]
                 aggregated_min = {k: None for k in axis_labels}  # 最悪値集約
+                aggregated_min_node = {k: None for k in axis_labels}  # ボトルネックノード名
+                aggregated_min_value = {k: None for k in axis_labels}  # その物質の axis.value (原因)
+                aggregated_min_is_self = {k: False for k in axis_labels}  # 最悪が自物質か否か
                 self_scores: dict[str, float | None] = {k: None for k in axis_labels}  # 自物質スコアキャッシュ
 
                 plotted = 0
@@ -639,11 +642,15 @@ else:
                         continue
                     r_vals = []
                     for k in axis_labels:
-                        s_ = n_sub.get(k, {}).get("score")
+                        axis_data = n_sub.get(k, {})
+                        s_ = axis_data.get("score")
                         v = s_ if s_ is not None else 0
                         r_vals.append(v)
                         if s_ is not None and (aggregated_min[k] is None or s_ < aggregated_min[k]):
                             aggregated_min[k] = s_
+                            aggregated_min_node[k] = n["name"]
+                            aggregated_min_value[k] = axis_data.get("value")
+                            aggregated_min_is_self[k] = n["is_self"]
                         if n["is_self"]:
                             self_scores[k] = s_
                     r_vals.append(r_vals[0])
@@ -692,13 +699,28 @@ else:
                         self_v = self_scores.get(k)
                         agg_v = aggregated_min.get(k)
                         delta = (agg_v - self_v) if (self_v is not None and agg_v is not None) else None
+                        bn_node = aggregated_min_node.get(k)
+                        bn_value = aggregated_min_value.get(k)
+                        # ボトルネック表示: 自物質が最悪 = "★ 自物質"、上流が最悪 = "↑物質名"
+                        if bn_node is None or agg_v is None:
+                            bn_cell = "—"
+                        elif aggregated_min_is_self.get(k):
+                            bn_cell = f"★ {bn_node}"
+                        else:
+                            bn_cell = f"↑ {bn_node}"
+                        reason_cell = str(bn_value) if bn_value else "—"
                         agg_rows.append({
                             "軸": label,
                             "自物質": f"{self_v:.0f}" if self_v is not None else "—",
                             "集約最悪値": f"{agg_v:.0f}" if agg_v is not None else "—",
                             "下振れ幅": f"{delta:+.0f}" if delta is not None and abs(delta) > 0.5 else "—",
+                            "ボトルネック": bn_cell,
+                            "原因 (集約最悪値の根拠)": reason_cell,
                         })
-                    st.markdown("**軸別 自物質 vs 集約最悪値** (下振れ幅マイナスは上流リスクが下流より重い)")
+                    st.markdown(
+                        "**軸別 自物質 vs 集約最悪値** "
+                        "(下振れ幅マイナスは上流リスクが下流より重い・ボトルネックはその軸で最悪値を引っ張った物質)"
+                    )
                     st.dataframe(pd.DataFrame(agg_rows), use_container_width=True, hide_index=True)
 
             # ----- Tab 3: 上流ノード詳細 -----
