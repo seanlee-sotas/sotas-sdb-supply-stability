@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import sumitomo_loader as sl  # noqa: E402
 
 st.set_page_config(
-    page_title="SDB Mock | 住友ゴム向け供給安定性",
+    page_title="SDB 供給リスク評価方法ブレスト用Mock",
     page_icon="🛞",
     layout="wide",
 )
@@ -27,7 +27,7 @@ layers = sl.load_layers()
 materials = sl.load_materials()
 citations = sl.load_citations()
 
-st.title("🛞 SDB Mock — 住友ゴム（DUNLOP）向け 供給安定性レイヤー")
+st.title("🛞 SDB 供給リスク評価方法ブレスト用Mock")
 st.caption(
     f"出典: {meta['source_company']} {meta['fiscal_year']} 有価証券報告書・統合報告書 "
     f"／ {len(materials)}物質（pinned {(materials['status']=='pinned').sum()}, "
@@ -37,9 +37,8 @@ st.caption(
 
 st.markdown(
     """
-このMockは **Sotas内部のdiscussion purpose** 専用です。
-住友ゴム工業の公開資料から抽出した「**いま使っている物質**」と「**これから使いたい物質**」を起点に、
-**SDBの既存機能（TDS/SDS/カタログDB）に供給安定性レイヤーが乗ったらどう見えるか** をシミュレートします。
+住友ゴム工業の公開資料から抽出した「**今使っている物質**」と「**これから使いたい（と思われる）物質**」を起点に、
+**供給リスク評価の切り口を議論するための叩き台** です。
 
 #### 使い方
 1. **🛞 事業マップ（このページ）** — 4事業セグメントから物質を探す
