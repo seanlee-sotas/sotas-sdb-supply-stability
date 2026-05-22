@@ -694,6 +694,30 @@ else:
                     )
 
                     # Show aggregated min scores as a table
+                    def _humanize_reason(axis_key: str, value_str) -> str:
+                        """scoring の axis.value を自然言語で噛み砕く。"""
+                        if not value_str or value_str == "—":
+                            return "—"
+                        v = str(value_str)
+                        if axis_key == "axis2_supply_demand":
+                            # "+0.67 (輸出超過)" / "-0.43 (輸入依存)"
+                            return f"HS6 純輸出比率 {v} — 国内需給と海外市況の結合度を示す"
+                        if axis_key == "axis3_jp_concentration":
+                            # "16社 (低集中)" / "6社 (中集中)"
+                            return f"国内供給 {v} — 言及社数が少ないほど代替先が限られる"
+                        if axis_key == "axis4_global_hhi":
+                            # "1,628 (中集中)" / "3,200 (高集中)"
+                            return f"世界 HHI {v} — 上位国寡占度。3000以上で地政学ショック耐性低"
+                        if axis_key == "axis5_regulation":
+                            return v  # "規制該当なし" / "ECHA SVHC 1件" 等そのまま自然
+                        if axis_key == "axis6_events":
+                            # "HIGH 2 / MED 6"
+                            return f"関連企業 供給途絶イベント {v} — 直近365日のFM/停止/事故"
+                        if axis_key == "axis7_price":
+                            # "32.7%" — ボラ
+                            return f"原料価格 年間ボラティリティ {v} — WBコモディティ価格ベース"
+                        return v
+
                     agg_rows = []
                     for k, label in axis_labels.items():
                         self_v = self_scores.get(k)
@@ -701,14 +725,27 @@ else:
                         delta = (agg_v - self_v) if (self_v is not None and agg_v is not None) else None
                         bn_node = aggregated_min_node.get(k)
                         bn_value = aggregated_min_value.get(k)
-                        # ボトルネック表示: 自物質が最悪 = "★ 自物質"、上流が最悪 = "↑物質名"
-                        if bn_node is None or agg_v is None:
-                            bn_cell = "—"
-                        elif aggregated_min_is_self.get(k):
-                            bn_cell = f"★ {bn_node}"
-                        else:
+
+                        # ボトルネック表示判定:
+                        # 1. スコア無し / agg_v >= 60 (注意ライン超え = 安全圏): "—"
+                        # 2. delta が 0 近傍 (自物質と上流が同点): "—" (誰が起点か特定できない)
+                        # 3. 自物質が単独最悪 (delta == 0 で is_self): "—"
+                        # 4. 上流が単独最悪: "↑物質名"
+                        is_meaningful = (
+                            bn_node is not None
+                            and agg_v is not None
+                            and agg_v < 60   # 注意ライン未満 = リスク有り
+                            and delta is not None
+                            and delta < -0.5  # 自物質より下振れあり
+                            and not aggregated_min_is_self.get(k)
+                        )
+                        if is_meaningful:
                             bn_cell = f"↑ {bn_node}"
-                        reason_cell = str(bn_value) if bn_value else "—"
+                            reason_cell = _humanize_reason(k, bn_value)
+                        else:
+                            bn_cell = "—"
+                            reason_cell = "—"
+
                         agg_rows.append({
                             "軸": label,
                             "自物質": f"{self_v:.0f}" if self_v is not None else "—",
@@ -719,7 +756,7 @@ else:
                         })
                     st.markdown(
                         "**軸別 自物質 vs 集約最悪値** "
-                        "(下振れ幅マイナスは上流リスクが下流より重い・ボトルネックはその軸で最悪値を引っ張った物質)"
+                        "(下振れ幅マイナスは上流リスクが下流より重い・ボトルネック欄は **上流のせいで集約値が60未満に押し下げられた軸** のみ表示)"
                     )
                     st.dataframe(pd.DataFrame(agg_rows), use_container_width=True, hide_index=True)
 
