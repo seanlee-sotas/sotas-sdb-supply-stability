@@ -1,4 +1,4 @@
-"""軸データブラウザ — 7軸ごとに生parquet・カラム定義・メタ情報を閲覧."""
+"""元データ閲覧 — 7軸ごとに生parquet・カラム定義・メタ情報を閲覧."""
 
 import sys
 from pathlib import Path
@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import source_inspector  # noqa: E402
 
 st.set_page_config(
-    page_title="軸データブラウザ | SDB Mock",
+    page_title="元データ閲覧 | SDB Mock",
     page_icon="📊",
     layout="wide",
 )
@@ -32,7 +32,7 @@ def find_glob(directory: Path, pattern: str) -> Path | None:
     return files[-1] if files else None
 
 
-st.title("📊 軸データブラウザ")
+st.title("📊 元データ閲覧")
 
 st.markdown(
     """
