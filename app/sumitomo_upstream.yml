@@ -86,13 +86,16 @@ chains:
       role: "モノマー"
     parents:
       - name: "エチルベンゼン"
+        cas: "100-41-4"
         role: "中間体"
         note: "ベンゼン + エチレンのアルキル化"
         parents:
           - name: "ベンゼン"
+            cas: "71-43-2"
             role: "BTX 芳香族"
             wb_commodity: "CRUDE_BRENT"
           - name: "エチレン"
+            cas: "74-85-1"
             role: "ナフサクラッカー基幹品"
             wb_commodity: "CRUDE_BRENT"
 
@@ -189,10 +192,12 @@ chains:
         role: "中間体"
         note: "アニリン + ニトロベンゼンの触媒反応"
         parents:
-          - name: "アニリン / ベンゼン"
+          - name: "アニリン"
+            cas: "62-53-3"
             role: "石化原料"
             wb_commodity: "CRUDE_BRENT"
       - name: "メチル イソブチル ケトン (MIBK)"
+        cas: "108-10-1"
         role: "中間体"
         note: "アセトン縮合"
 
@@ -207,6 +212,7 @@ chains:
         wb_commodity: "CRUDE_BRENT"
         note: "FCC装置副生 C4留分のイソブチレン"
       - name: "イソプレン"
+        cas: "78-79-5"
         role: "原料モノマー (少量)"
         wb_commodity: "CRUDE_BRENT"
 
@@ -243,10 +249,12 @@ chains:
       role: "繊維"
     parents:
       - name: "PTA (テレフタル酸)"
+        cas: "100-21-0"
         role: "原料モノマー"
         wb_commodity: "CRUDE_BRENT"
         note: "p-キシレン酸化"
       - name: "MEG (エチレングリコール)"
+        cas: "107-21-1"
         role: "原料モノマー"
         wb_commodity: "CRUDE_BRENT"
         note: "エチレン酸化"
@@ -338,6 +346,7 @@ chains:
       role: "繊維"
     parents:
       - name: "アクリロニトリル (AN)"
+        cas: "107-13-1"
         role: "原料モノマー"
         wb_commodity: "CRUDE_BRENT"
         note: "プロピレン・アンモニア酸化"
@@ -370,6 +379,7 @@ chains:
         note: "シリコン金属 + メチルクロライド (Müller-Rochow法)"
         parents:
           - name: "シリコン金属"
+            cas: "7440-21-3"
             role: "原料金属"
             usgs_element: "Si_metal"
             strategic_token: "Si_metal"

@@ -703,9 +703,29 @@ else:
 
             # ----- Tab 3: 上流ノード詳細 -----
             with up_tab3:
-                st.markdown("**各上流ノードのリスクシグナル** (USGS国別集中 / WB価格 / 戦略物資フラグ)")
+                st.markdown(
+                    "**各上流ノードのリスクシグナル** "
+                    "(7軸スコア / USGS国別集中 / WB価格 / 戦略物資フラグ)"
+                )
                 usgs_df_cached = _load_usgs_concentration()
                 strat_df_cached = _load_strategic_flags()
+
+                tab3_axis_labels = {
+                    "axis1_capacity": "🏭軸1",
+                    "axis2_supply_demand": "⚖️軸2",
+                    "axis3_jp_concentration": "🤝軸3",
+                    "axis4_global_hhi": "🌐軸4",
+                    "axis5_regulation": "📋軸5",
+                    "axis6_events": "💥軸6",
+                    "axis7_price": "💹軸7",
+                }
+
+                def _band_emoji(s):
+                    if s is None:
+                        return "⚪"
+                    if s <= 30: return "🔴"
+                    if s <= 60: return "🟡"
+                    return "🟢"
 
                 for n in nodes:
                     if n["is_self"]:
@@ -746,6 +766,44 @@ else:
                                     st.markdown(f"- US: {'✅' if h['us_critical_2022'] else '—'}")
                                     st.markdown(f"- JP: {'✅ '+(h['meti_category'] or '') if h['meti_critical'] else '—'}")
                                     st.markdown(f"- **3国認定: {sc}/3**")
+
+                        # ---- 7軸スコア (上流ノード自身の) ----
+                        st.markdown("**📊 このノードの 7軸スコア** (低い=リスク高)")
+                        if n.get("cas"):
+                            try:
+                                n_sub = scoring.compute_all(n["cas"])
+                            except Exception as e:
+                                n_sub = None
+                                st.caption(f"scoring 失敗: {e}")
+                            if n_sub:
+                                metric_cols = st.columns(7)
+                                for i, (k, lbl) in enumerate(tab3_axis_labels.items()):
+                                    s_ = n_sub.get(k, {}).get("score")
+                                    with metric_cols[i]:
+                                        st.metric(
+                                            label=f"{_band_emoji(s_)} {lbl}",
+                                            value=f"{s_:.0f}" if s_ is not None else "—",
+                                        )
+                                # 上流伝播チェック: 自物質より重い軸を強調
+                                if sub:
+                                    diff_rows = []
+                                    for k, lbl in tab3_axis_labels.items():
+                                        up_s = n_sub.get(k, {}).get("score")
+                                        self_s = sub.get(k, {}).get("score")
+                                        if up_s is None or self_s is None:
+                                            continue
+                                        delta = up_s - self_s
+                                        if delta < -10:  # 上流が自物質より10点以上重い軸
+                                            diff_rows.append(
+                                                f"- **{lbl}**: 上流 {up_s:.0f} ↘ 自物質 {self_s:.0f} ({delta:+.0f})"
+                                            )
+                                    if diff_rows:
+                                        st.markdown("⚠ **自物質より下振れする軸** (上流リスクが下流に伝播)")
+                                        for line in diff_rows:
+                                            st.markdown(line)
+                        else:
+                            st.caption("CAS 未登録のため scoring 不可。USGS/WB シグナルのみ参照ください。")
+
                         if n.get("note"):
                             st.caption(f"📝 {n['note']}")
 
