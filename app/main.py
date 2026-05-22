@@ -49,9 +49,9 @@ SUPPLIER_DIR = ROOT / "data" / "supplier"
 
 AXES = [
     # (code, name, proxy_indicator, data_source)
-    ("軸1", "生産能力・新増設",
-     "新増設・能力変動の方向（new/expand/reduce/maintain）と件数",
-     "EDINET 有報・統合報告書・中計テキスト"),
+    ("軸1", "短期要因 (直近90日)",
+     "マクロ圧力 (JPCAエチレン稼働率 / Brent3M / 業界ニュース密度) + 個別圧力 (関連メーカー90日イベント / 物質名マッチ記事 / WB商品3M変化)",
+     "JPCA稼働率 ＋ WB Pink Sheet ＋ 化学工業日報 ＋ Google News RSS ＋ 軸6 LLM分類"),
     ("軸2", "需給バランス",
      "日本の純輸出比率 (輸出−輸入)/総貿易額  ＋1=供給過剰 / −1=輸入依存",
      "UN Comtrade 年次貿易統計"),
@@ -968,19 +968,36 @@ def render_axis6():
 # ---------- tab 1 ----------
 def render_axis1():
     st.info(
-        "**軸1「生産能力・新増設」** | EDINET 有報・統合報告書・中計から「生産能力／設備能力／年産」"
-        "等のキーワード周辺snippetを抽出。LLM構造化で製品×工場×能力テーブル化済。"
+        "**軸1「短期要因 (直近90日)」** | 構造評価軸 (2〜7) を時系列で補正する役割。"
+        " マクロ60% (JPCAエチレン稼働率 + Brent 3M変化 + 業界ニュース密度) と "
+        " 個別40% (関連メーカー90日イベント + 物質名マッチ記事 + 物質固有WB価格) の合成。"
+        "  score = 100 - 50 × pressure"
     )
-    st.warning(
-        "⚠️ **個別物質 (CAS) 粒度の評価は現状未対応** — スニペット抽出トリガーが化学品名でなく"
-        "一般キーワードのため。Phase B (JA alias生成 + product紐付け) まで生データのみ公開。"
+    st.caption(
+        "個別物質スコアは「📦 物質詳細」ページの 7軸表で確認できます。ここでは集約に使う生データ6種を一覧します。"
     )
     st.divider()
-    st.markdown("### 📂 ソース生データ")
+    st.markdown("### 📂 短期要因スコアに入っているソース生データ")
+    # マクロ
+    util_p = latest_parquet(ROOT / "data" / "jpca", "jpca_utilization")
+    source_inspector.render_source("jpca_utilization", util_p, key_suffix="axis1")
+    wb_p = latest_parquet(WB_DIR, "prices_monthly")
+    source_inspector.render_source("wb_prices", wb_p, key_suffix="axis1")
+    # 個別
+    chem_news_p = latest_parquet(ROOT / "data" / "chem_news", "chem_news")
+    source_inspector.render_source("chem_news", chem_news_p, key_suffix="axis1")
+    chem_daily_p = latest_parquet(ROOT / "data" / "chem_daily", "chem_daily")
+    source_inspector.render_source("chem_daily", chem_daily_p, key_suffix="axis1")
+
+    st.divider()
+    st.markdown("### 📂 旧軸1 (EDINET 設備キーワード抽出) 生データ — 参考")
+    st.caption(
+        "Phase B (JA alias生成 + product紐付け) を経て個別物質に紐付ける構想は保留。当面は参考データ。"
+    )
     p = latest_parquet(EDINET_DIR, "capacity_snippets")
     structured_p = latest_parquet(EDINET_DIR, "capacity_structured")
-    source_inspector.render_source("edinet_snippets", p)
-    source_inspector.render_source("edinet_structured", structured_p)
+    source_inspector.render_source("edinet_snippets", p, key_suffix="axis1-legacy")
+    source_inspector.render_source("edinet_structured", structured_p, key_suffix="axis1-legacy")
 
 
 # ---------- tab 7 ----------
@@ -1475,17 +1492,22 @@ def render_cross():
 
     st.divider()
 
-    # === Axis 1: per-chemical view disabled — see Phase B plan ===
-    st.subheader("🏭 軸1 生産能力・新増設")
-    st.warning(
-        "**個別物質ベースでは現状未対応**　\n"
-        "EDINET snippet は「生産能力／設備能力／年産」等の一般キーワードで抽出されており、"
-        "化学品 CAS にひもづいていません。chemicals.parquet 469件のうち日本語 alias を持つのは "
-        "17件のみで、残り452件 (96%) は日本語有報を LIKE 検索しても 0 件ヒットになるか、"
-        "ノイズだらけ（タイヤ生産設備・塗装工場など）になります。\n\n"
-        "**次フェーズ (Phase B)**: LLM で全469物質に JA aliases を生成し、"
-        "`capacity_structured.product` 列と紐付けて CAS 粒度に再構築予定。\n\n"
-        "**現状で見たい場合**: 上部の「🏭 軸1 生産能力」タブで企業活動の粗い proxy として閲覧可能。"
+    # === Axis 1: 短期要因 (直近90日) ===
+    st.subheader("⏱ 軸1 短期要因 (直近90日)")
+    try:
+        a1 = scoring.score_axis1(chem)
+    except Exception as e:
+        a1 = {"score": None, "value": "—", "note": f"算出失敗: {e}"}
+    score = a1.get("score")
+    band = "🟢" if (score is not None and score >= 70) else ("🟡" if (score is not None and score >= 40) else "🔴")
+    cc1, cc2 = st.columns([1, 4])
+    cc1.metric(f"{band} スコア", f"{score:.0f} / 100" if score is not None else "—")
+    cc2.markdown(f"**{a1.get('value', '—')}**")
+    if a1.get("note"):
+        st.caption(a1["note"])
+    st.caption(
+        "**マクロ60%** = JPCAエチレン稼働率 直近3M dip / Brent 3M変化 / 業界ニュース密度  ＋ "
+        "**個別40%** = 関連メーカー90日イベント (HIGH×2+MED×1) / 物質名マッチ記事 / WB商品3M変化"
     )
 
     st.divider()
@@ -1924,7 +1946,7 @@ def render_score():
 
 # ---------- Top-level tabs ----------
 tab_overview, tab_score, tab_cross, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
-    ["🏠 Overview", "🏆 総合スコア", "🔗 素材横串", "🏭 軸1 生産能力", "⚖️ 軸2 需給バランス", "🤝 軸3 サプライヤー集中", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "💹 軸7 価格変動性"]
+    ["🏠 Overview", "🏆 総合スコア", "🔗 素材横串", "⏱ 軸1 短期要因", "⚖️ 軸2 需給バランス", "🤝 軸3 サプライヤー集中", "🌐 軸4 地政学", "📋 軸5 規制リスク", "💥 軸6 供給途絶", "💹 軸7 価格変動性"]
 )
 
 with tab_overview:
