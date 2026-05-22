@@ -429,22 +429,22 @@ else:
             if usgs_element:
                 with tabs_geo[i]:
                     usgs_df = _load_usgs_concentration()
-                    sub = usgs_df[usgs_df["element"] == usgs_element].copy()
-                    if len(sub):
-                        sub = sub.sort_values("share_pct", ascending=False)
-                        elem_name = sub.iloc[0]["name"]
+                    usgs_sub = usgs_df[usgs_df["element"] == usgs_element].copy()
+                    if len(usgs_sub):
+                        usgs_sub = usgs_sub.sort_values("share_pct", ascending=False)
+                        elem_name = usgs_sub.iloc[0]["name"]
                         st.markdown(
                             f"**鉱物**: {elem_name} (元素: `{usgs_element}`)  "
-                            f"  ·  **データ年**: {sub.iloc[0]['source_year']}  "
+                            f"  ·  **データ年**: {usgs_sub.iloc[0]['source_year']}  "
                             f"  ·  **出典**: USGS Mineral Commodity Summaries 2025"
                         )
                         # 棒グラフ
                         fig = px.bar(
-                            sub, x="country", y="share_pct",
+                            usgs_sub, x="country", y="share_pct",
                             text="share_pct",
                             color="share_pct",
                             color_continuous_scale="Reds",
-                            title=f"{elem_name} — 国別生産シェア (世界, {sub.iloc[0]['source_year']})",
+                            title=f"{elem_name} — 国別生産シェア (世界, {usgs_sub.iloc[0]['source_year']})",
                         )
                         fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
                         fig.update_layout(
@@ -454,9 +454,9 @@ else:
                         )
                         st.plotly_chart(fig, use_container_width=True)
                         # HHI 計算
-                        hhi = float(((sub[sub["country"] != "Others"]["share_pct"]) ** 2).sum())
+                        hhi = float(((usgs_sub[usgs_sub["country"] != "Others"]["share_pct"]) ** 2).sum())
                         band = "🔴 高集中" if hhi >= 2500 else ("🟡 中集中" if hhi >= 1500 else "🟢 低集中")
-                        top = sub[sub["country"] != "Others"].iloc[0]
+                        top = usgs_sub[usgs_sub["country"] != "Others"].iloc[0]
                         c1, c2, c3 = st.columns(3)
                         c1.metric("HHI", f"{hhi:.0f}", band)
                         c2.metric("Top 国", top["country"], f"{top['share_pct']:.1f}%")
@@ -804,9 +804,9 @@ else:
                                 st.markdown(f"- 戦略: `{n['strategic_token']}`")
                         with cols[1]:
                             if n.get("usgs_element") and len(usgs_df_cached):
-                                sub = usgs_df_cached[usgs_df_cached["element"] == n["usgs_element"]]
-                                if len(sub):
-                                    sub_nonothers = sub[sub["country"] != "Others"]
+                                usgs_sub = usgs_df_cached[usgs_df_cached["element"] == n["usgs_element"]]
+                                if len(usgs_sub):
+                                    sub_nonothers = usgs_sub[usgs_sub["country"] != "Others"]
                                     if len(sub_nonothers):
                                         top = sub_nonothers.sort_values("share_pct", ascending=False).iloc[0]
                                         hhi = float((sub_nonothers["share_pct"] ** 2).sum())
