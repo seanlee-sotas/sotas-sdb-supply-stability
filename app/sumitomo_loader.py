@@ -66,9 +66,13 @@ def axis_signal_emoji(score: float | None) -> str:
     return "🔴"
 
 
-@st.cache_data(show_spinner=False)
 def load_upstream_chains() -> dict:
-    """app/sumitomo_upstream.yml をパース。物質id → 上流系譜 (self + parents tree)."""
+    """app/sumitomo_upstream.yml をパース。物質id → 上流系譜 (self + parents tree).
+
+    NOTE: 意図的に @st.cache_data を付けていない。YAML 内容を変えても関数 source の
+    hash は変わらず cache が永続化してしまい "Reboot しても古い chain が表示" 問題が
+    起きる。ファイルは数KBで毎回パースしても無視できるコスト。
+    """
     import yaml
     p = Path(__file__).resolve().parent / "sumitomo_upstream.yml"
     if not p.exists():
