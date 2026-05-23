@@ -18,10 +18,19 @@ REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "data"
 
 
-def latest_parquet(directory: Path, prefix: str) -> Path | None:
+def latest_parquet(directory: Path, prefix: str, *, exclude_summary: bool = True) -> Path | None:
+    """`{prefix}_<datestamp>.parquet` の中で最新を返す。
+
+    `exclude_summary=True` (default) の場合、`{prefix}_summary_*.parquet` のような
+    派生ファイル名はメイン取得対象から外す (`chemical_production_*` glob は
+    `chemical_production_summary_*` もマッチしてしまうため。summary 系を取りたい時は
+    `find_glob` 経由か `exclude_summary=False` を指定)。
+    """
     if not directory.exists():
         return None
     files = sorted(directory.glob(f"{prefix}_*.parquet"))
+    if exclude_summary:
+        files = [f for f in files if "summary" not in f.stem]
     return files[-1] if files else None
 
 
