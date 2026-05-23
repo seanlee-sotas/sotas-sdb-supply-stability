@@ -130,6 +130,24 @@ def _load_reach_restriction() -> pd.DataFrame:
     return pd.read_parquet(files[-1])
 
 
+@st.cache_data(show_spinner=False)
+def _load_anrpc_events() -> pd.DataFrame:
+    base = Path(__file__).resolve().parents[2] / "data" / "anrpc"
+    files = sorted(base.glob("events_*.parquet"))
+    if not files:
+        return pd.DataFrame()
+    return pd.read_parquet(files[-1])
+
+
+@st.cache_data(show_spinner=False)
+def _load_rubber_news_events() -> pd.DataFrame:
+    base = Path(__file__).resolve().parents[2] / "data" / "rubber_news"
+    files = sorted(base.glob("events_*.parquet"))
+    if not files:
+        return pd.DataFrame()
+    return pd.read_parquet(files[-1])
+
+
 # 産国 → ISO3 マッピング (EM-DAT クロス用)
 ELEMENT_TO_COUNTRIES = {
     "W":           ["China", "Vietnam", "Russia"],
@@ -569,6 +587,120 @@ else:
 
                 basis = _axis_basis_text(axis_key, score, s.get("value"), s.get("note"))
                 cols[2].markdown(basis)
+
+        # ---------------------------------------------------------------
+        # v3 新規: 軸6 補強パック — EM-DAT + ANRPC/IRSG + 業界紙RSS
+        # ---------------------------------------------------------------
+        is_nr_for_axis6 = (m.get("cas") in NR_CASES) or (m["id"] in NR_IDS)
+        usgs_elem_for_axis6 = CAS_TO_USGS_ELEMENT.get(m.get("cas")) or ID_TO_USGS_ELEMENT.get(m["id"])
+        target_countries_a6 = []
+        if is_nr_for_axis6:
+            target_countries_a6 = NR_COUNTRIES
+        elif usgs_elem_for_axis6:
+            target_countries_a6 = ELEMENT_TO_COUNTRIES.get(usgs_elem_for_axis6, [])
+
+        # 関連物質判定 (NR系 / タイヤ完成品関連 → 業界紙 RSS 対象)
+        is_tire_related = (m["primary_segment"] == "tire" or m["id"] in (
+            "ssbr", "esbr", "br", "butadiene", "styrene", "carbon_black", "silica_precipitated",
+            "iir_butyl", "halobutyl", "ppd6_antioxidant", "zinc_oxide", "sulfur",
+            "recycled_carbon_black", "eudr_compliant_nr", "enr_epoxidized_nr",
+            "dpnr_high_purity", "active_tread_water_switch", "active_tread_temp_switch",
+            "active_tread_third_switch", "hsbr_hnbr", "ppd6_substitute"
+        ))
+
+        emdat_df_a6 = _load_emdat()
+        anrpc_df = _load_anrpc_events()
+        rubber_df = _load_rubber_news_events()
+
+        emdat_a6_sub = emdat_df_a6[emdat_df_a6["country"].isin(target_countries_a6)] if len(emdat_df_a6) and target_countries_a6 else pd.DataFrame()
+        anrpc_sub = anrpc_df if (is_nr_for_axis6 and len(anrpc_df)) else pd.DataFrame()
+        rubber_sub = rubber_df if (is_tire_related and len(rubber_df)) else pd.DataFrame()
+
+        if len(emdat_a6_sub) or len(anrpc_sub) or len(rubber_sub):
+            existing_a6 = sub.get("axis6_events", {})
+            existing_a6_score = existing_a6.get("score")
+
+            st.markdown("### 💥 軸6 補強パック (v3) — 構造化 8-K に映らない supply イベント")
+            st.caption(
+                "既存軸6 (米化学メジャー15社の 8-K LLM分類) では拾えないコモディティ系のイベントを、"
+                "**EM-DAT 自然災害 + ANRPC/IRSG (NR市況) + 業界紙 RSS (タイヤ・ゴム)** で補強。"
+                "天然ゴムのような物質も軸6 で評価できるようになります。"
+            )
+
+            # 集約スコア計算
+            emdat_high = emdat_a6_sub["damage_usd_m"].sum() / 1000 if len(emdat_a6_sub) else 0
+            anrpc_high = (anrpc_sub["severity"] == "HIGH").sum() if len(anrpc_sub) else 0
+            anrpc_med = (anrpc_sub["severity"] == "MED").sum() if len(anrpc_sub) else 0
+            rubber_high = (rubber_sub["supply_relevance"] == "HIGH").sum() if len(rubber_sub) else 0
+            rubber_med = (rubber_sub["supply_relevance"] == "MED").sum() if len(rubber_sub) else 0
+
+            # シンプル合成: HIGH×15 + MED×5 + EM-DAT 被害額B USD × 3 を100から減点
+            raw = anrpc_high * 15 + anrpc_med * 5 + rubber_high * 15 + rubber_med * 5 + min(emdat_high * 3, 30)
+            proxy_score = max(0, 100 - raw)
+
+            existing_label = f"{int(existing_a6_score)}" if existing_a6_score is not None else "評価不可"
+            proxy_color = "#10B981" if proxy_score >= 70 else ("#F59E0B" if proxy_score >= 40 else "#EF4444")
+            existing_color = "#10B981" if existing_a6_score and existing_a6_score >= 70 else ("#F59E0B" if existing_a6_score and existing_a6_score >= 40 else ("#EF4444" if existing_a6_score is not None else "#9CA3AF"))
+
+            sc_cols = st.columns(3)
+            with sc_cols[0]:
+                st.markdown(
+                    f"<div style='border:2px solid {existing_color};padding:0.6em 0.8em;border-radius:0.5em;text-align:center;'>"
+                    f"<small>既存軸6 (SEC8K 等)</small><br>"
+                    f"<span style='font-size:1.8em;font-weight:700;color:{existing_color};'>{existing_label}</span>"
+                    f"</div>", unsafe_allow_html=True)
+            with sc_cols[1]:
+                st.markdown(
+                    f"<div style='border:2px solid {proxy_color};padding:0.6em 0.8em;border-radius:0.5em;text-align:center;'>"
+                    f"<small>v3補強プロキシ</small><br>"
+                    f"<span style='font-size:1.8em;font-weight:700;color:{proxy_color};'>{int(proxy_score)}</span>"
+                    f"</div>", unsafe_allow_html=True)
+            with sc_cols[2]:
+                if existing_a6_score is None:
+                    combined = proxy_score
+                    note = "既存軸6 None → 補強プロキシで代替"
+                else:
+                    combined = (existing_a6_score * 0.5 + proxy_score * 0.5)
+                    note = "既存軸6 と補強プロキシの加重平均 (50/50)"
+                comb_color = "#10B981" if combined >= 70 else ("#F59E0B" if combined >= 40 else "#EF4444")
+                st.markdown(
+                    f"<div style='border:2px solid {comb_color};padding:0.6em 0.8em;border-radius:0.5em;text-align:center;'>"
+                    f"<small>合成スコア</small><br>"
+                    f"<span style='font-size:1.8em;font-weight:700;color:{comb_color};'>{int(combined)}</span>"
+                    f"</div>", unsafe_allow_html=True)
+            st.caption(note)
+
+            # ----- EM-DAT 自然災害 -----
+            if len(emdat_a6_sub):
+                st.markdown(f"##### 🌪 EM-DAT 主要産国の災害履歴 ({len(emdat_a6_sub)}件)")
+                disp = emdat_a6_sub.sort_values(["year"], ascending=False)[
+                    ["country", "year", "disaster_type", "event_name", "damage_usd_m", "industry_impact"]
+                ].copy()
+                disp.columns = ["国", "年", "種別", "イベント", "被害額(USD M)", "業界影響"]
+                st.dataframe(disp, use_container_width=True, hide_index=True, height=240)
+
+            # ----- ANRPC/IRSG NR市況 -----
+            if len(anrpc_sub):
+                st.markdown(f"##### 🌱 ANRPC/IRSG NR市況イベント ({len(anrpc_sub)}件)")
+                disp = anrpc_sub.sort_values("event_date", ascending=False)[
+                    ["event_date", "source", "country", "severity", "title", "summary",
+                     "affected_volume_kt", "price_impact_pct"]
+                ].copy()
+                disp["event_date"] = disp["event_date"].dt.strftime("%Y-%m-%d")
+                disp.columns = ["日付", "ソース", "国", "重大度", "タイトル", "概要",
+                                 "影響量(kt)", "価格影響(%)"]
+                st.dataframe(disp, use_container_width=True, hide_index=True, height=280)
+
+            # ----- 業界紙 RSS -----
+            if len(rubber_sub):
+                st.markdown(f"##### 📰 業界紙 RSS イベント ({len(rubber_sub)}件)")
+                disp = rubber_sub.sort_values("date", ascending=False)[
+                    ["date", "publication", "company", "country", "event_type", "title",
+                     "supply_relevance", "affected_materials_str"]
+                ].copy()
+                disp["date"] = disp["date"].dt.strftime("%Y-%m-%d")
+                disp.columns = ["日付", "媒体", "企業", "国", "種別", "タイトル", "供給影響度", "影響原料"]
+                st.dataframe(disp, use_container_width=True, hide_index=True, height=280)
 
         # ---------------------------------------------------------------
         # v3 新規: ECHA REACH Restriction (軸5 強化) — CAS hit

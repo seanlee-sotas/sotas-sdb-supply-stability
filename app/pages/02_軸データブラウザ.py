@@ -399,6 +399,59 @@ elif axis == "axis6":
     )
 
     st.markdown("---")
+    st.markdown("### 🆕 v3新規: ANRPC / IRSG NR市況イベント")
+    st.markdown(
+        "**天然ゴム業界専門の supply イベント**: ANRPC (Association of NR Producing Countries) Country Highlights + "
+        "IRSG (International Rubber Study Group) 需給ギャップ警告。"
+        "葉枯病・洪水・ストライキ・需給逼迫を月次で記録。"
+    )
+    anrpc_p = latest_parquet(DATA / "anrpc", "events")
+    if anrpc_p and anrpc_p.exists():
+        with st.expander("🌱 ANRPC/IRSG イベント (2022-2024 curated)", expanded=False):
+            import pandas as pd
+            a_df = pd.read_parquet(anrpc_p)
+            st.markdown(
+                f"**出典**: ANRPC ({a_df['source_url'].iloc[0]}) + IRSG  ·  "
+                f"**件数**: {len(a_df)}  ·  **国数**: {a_df['country'].nunique()}"
+            )
+            st.markdown(
+                "**カラム定義**: source / country / event_date / event_type / severity / title / summary / "
+                "affected_volume_kt (影響量 kt/月) / price_impact_pct (価格影響 %)"
+            )
+            a_df_disp = a_df.copy()
+            a_df_disp["event_date"] = a_df_disp["event_date"].dt.strftime("%Y-%m-%d")
+            st.dataframe(a_df_disp.sort_values("event_date", ascending=False), use_container_width=True, height=400)
+
+    st.markdown("---")
+    st.markdown("### 🆕 v3新規: 業界紙 RSS (Tire Business / Rubber & Plastics News 等)")
+    st.markdown(
+        "**タイヤ・ゴム業界専門紙の supply disruption ニュース**: 工場閉鎖・火災・ストライキ・FM 宣言。"
+        "RSS から fetch + LLM 分類予定、現状は 2022-2024 主要イベント curated 化。"
+    )
+    rss_p = latest_parquet(DATA / "rubber_news", "events")
+    if rss_p and rss_p.exists():
+        with st.expander("📰 業界紙イベント (curated)", expanded=False):
+            import pandas as pd
+            r_df = pd.read_parquet(rss_p)
+            st.markdown(
+                f"**媒体**: Tire Business / Rubber & Plastics News / European Rubber Journal / Tyrepress / Modern Tire Dealer  "
+                f"·  **件数**: {len(r_df)}  ·  **企業**: {r_df['company'].nunique()}"
+            )
+            st.markdown(
+                "**カラム定義**: publication / date / company / country / event_type / title / summary / "
+                "supply_relevance (HIGH/MED/LOW) / affected_materials_str (影響原料カンマ区切り)"
+            )
+            r_df_disp = r_df.copy()
+            r_df_disp["date"] = r_df_disp["date"].dt.strftime("%Y-%m-%d")
+            st.dataframe(r_df_disp.sort_values("date", ascending=False), use_container_width=True, height=400)
+
+    rss_raw_p = latest_parquet(DATA / "rubber_news", "rss_raw")
+    if rss_raw_p and rss_raw_p.exists():
+        with st.expander("📰 RSS 自動 fetch 生データ (参考)", expanded=False):
+            import pandas as pd
+            st.dataframe(pd.read_parquet(rss_raw_p), use_container_width=True, height=300)
+
+    st.markdown("---")
     st.markdown("### 🆕 v3新規: SEC 10-K Risk Factor (構造リスク)")
     st.markdown(
         "**8-K 臨時開示** に加えて **10-K 年次報告書の Risk Factor 章** から、各社が構造的に開示する"
