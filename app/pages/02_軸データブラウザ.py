@@ -86,7 +86,7 @@ if axis == "axis1":
     st.markdown("##### マクロ系シグナル")
     source_inspector.render_source(
         "jpca_utilization", latest_parquet(DATA / "jpca", "jpca_utilization"),
-        key_suffix="axis1", expanded=True,
+        key_suffix="axis1", expanded=False,
     )
     source_inspector.render_source(
         "wb_prices", latest_parquet(DATA / "worldbank", "prices_monthly"),
@@ -125,7 +125,7 @@ elif axis == "axis2":
     )
     source_inspector.render_source(
         "comtrade_trade", latest_parquet(DATA / "comtrade", "trade"),
-        key_suffix="axis2", expanded=True,
+        key_suffix="axis2", expanded=False,
     )
     source_inspector.render_source(
         "jpca_utilization", latest_parquet(DATA / "jpca", "utilization")
@@ -166,7 +166,7 @@ elif axis == "axis3":
         "jp_supplier",
         latest_parquet(DATA / "chemicals", "chemicals_company_map")
         or (DATA / "chemicals" / "chemicals_company_map.parquet"),
-        expanded=True,
+        expanded=False,
     )
 
     st.markdown("---")
@@ -177,7 +177,7 @@ elif axis == "axis3":
     )
     prtr_p = latest_parquet(DATA / "prtr", "prtr_by_cas")
     if prtr_p and prtr_p.exists():
-        with st.expander("🇯🇵 環境省 PRTR 事業所別データ", expanded=True):
+        with st.expander("🇯🇵 環境省 PRTR 事業所別データ", expanded=False):
             import pandas as pd
             df_prtr = pd.read_parquet(prtr_p)
             st.markdown(
@@ -194,7 +194,7 @@ elif axis == "axis3":
 
     prtr_sum_p = latest_parquet(DATA / "prtr", "prtr_cas_summary")
     if prtr_sum_p and prtr_sum_p.exists():
-        with st.expander("🇯🇵 PRTR CAS別 集中度サマリー", expanded=True):
+        with st.expander("🇯🇵 PRTR CAS別 集中度サマリー", expanded=False):
             import pandas as pd
             df_s = pd.read_parquet(prtr_sum_p)
             st.markdown(
@@ -212,7 +212,7 @@ elif axis == "axis4":
     )
     source_inspector.render_source(
         "comtrade_trade", latest_parquet(DATA / "comtrade", "trade"),
-        key_suffix="axis4", expanded=True,
+        key_suffix="axis4", expanded=False,
     )
 
     st.markdown("---")
@@ -336,7 +336,7 @@ elif axis == "axis5":
         "ECHA SVHC (候補) + METI 特定重要物資 + Stockholm POPs + **ECHA REACH Restriction/Authorization (v3新規、規制段階が進んだ物質)**。"
     )
     source_inspector.render_source(
-        "echa_svhc", latest_parquet(DATA / "echa", "svhc"), expanded=True,
+        "echa_svhc", latest_parquet(DATA / "echa", "svhc"), expanded=False,
     )
     source_inspector.render_source(
         "meti_critical", latest_parquet(DATA / "regulations", "meti_critical")
@@ -353,7 +353,7 @@ elif axis == "axis5":
     )
     reach_p = latest_parquet(DATA / "echa", "reach_regulation")
     if reach_p and reach_p.exists():
-        with st.expander("🇪🇺 ECHA Annex XVII / XIV 規制リスト", expanded=True):
+        with st.expander("🇪🇺 ECHA Annex XVII / XIV 規制リスト", expanded=False):
             import pandas as pd
             r_df = pd.read_parquet(reach_p)
             st.markdown(
@@ -372,10 +372,10 @@ elif axis == "axis6":
         "SEC 8-K / EDINET 臨時報告書 / DART 主要事項報告 / TDnet 開示 / TWSE 重大情報 / NITE 化学事故 を横断、LLM分類で供給関連イベントのみ抽出。"
     )
     source_inspector.render_source(
-        "sec_8k", latest_parquet(DATA / "sec", "filings_8k"), expanded=True,
+        "sec_8k", latest_parquet(DATA / "sec", "filings_8k"), expanded=False,
     )
     source_inspector.render_source(
-        "sec_item801", latest_parquet(DATA / "sec", "item801_classified"), expanded=True,
+        "sec_item801", latest_parquet(DATA / "sec", "item801_classified"), expanded=False,
     )
     source_inspector.render_source(
         "edinet_extraordinary",
@@ -425,7 +425,7 @@ elif axis == "axis7":
     )
     source_inspector.render_source(
         "wb_prices", latest_parquet(DATA / "worldbank", "prices_monthly"),
-        expanded=True,
+        expanded=False,
     )
 
     st.markdown("---")
